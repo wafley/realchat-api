@@ -3,3 +3,9 @@ node_modules/
 uploads/**
 !uploads/**/
 !uploads/**/.gitkeep
+
+# Docs
+struktur-taks.md
+informasi.md
+git-commit-roadmap.md
+chatapp_documentation_rapi.md
