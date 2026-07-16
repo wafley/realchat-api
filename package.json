@@ -37,6 +37,7 @@
     "multer": "^2.2.0",
     "nodemon": "^3.1.14",
     "postgres": "^3.4.9",
+    "socket.io": "^4.8.3",
     "zod": "^4.4.3"
   },
   "devDependencies": {
