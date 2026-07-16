@@ -12,7 +12,7 @@ const transporter = nodemailer.createTransport({
 });
 
 export async function sendVerificationEmail(to: string, token: string) {
-  const verificationUrl = `${env.corsOrigin}/verify-email?token=${token}`;
+  const verificationUrl = `${env.frontendUrl}/verify-email?token=${token}`;
 
   await transporter.sendMail({
     from: `"RealChat" <${env.smtpUser}>`,
@@ -28,7 +28,7 @@ export async function sendVerificationEmail(to: string, token: string) {
 }
 
 export async function sendResetPasswordEmail(to: string, token: string) {
-  const resetUrl = `${env.corsOrigin}/reset-password?token=${token}`;
+  const resetUrl = `${env.frontendUrl}/reset-password?token=${token}`;
 
   await transporter.sendMail({
     from: `"RealChat" <${env.smtpUser}>`,
