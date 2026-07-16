@@ -12,6 +12,10 @@ const envSchema = z.object({
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
   UPLOAD_DIR: z.string().default('uploads'),
   MAX_FILE_SIZE: z.coerce.number().default(5242880),
+  SMTP_HOST: z.string().default('smtp.gmail.com'),
+  SMTP_PORT: z.coerce.number().default(587),
+  SMTP_USER: z.string().default(''),
+  SMTP_PASS: z.string().default(''),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -32,4 +36,8 @@ export const env = {
   corsOrigin: parsed.data.CORS_ORIGIN,
   uploadDir: parsed.data.UPLOAD_DIR,
   maxFileSize: parsed.data.MAX_FILE_SIZE,
+  smtpHost: parsed.data.SMTP_HOST,
+  smtpPort: parsed.data.SMTP_PORT,
+  smtpUser: parsed.data.SMTP_USER,
+  smtpPass: parsed.data.SMTP_PASS,
 };
