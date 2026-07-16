@@ -10,7 +10,8 @@ import { errorHandler } from './middlewares/errorHandler';
 const app = express();
 
 app.use(helmet());
-app.use(cors({ origin: env.corsOrigin, credentials: true }));
+const corsOrigins = env.corsOrigin.split(',').map((s) => s.trim());
+app.use(cors({ origin: corsOrigins, credentials: true }));
 app.use(compression());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
