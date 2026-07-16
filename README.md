@@ -21,19 +21,42 @@ RealChat API is the backend service for a real-time chat application built with 
 
 ```bash
 npm install
-Environment
+```
+
+## Environment
+
 Copy the example environment file:
+
+```bash
 cp .env.example .env
-Then update the values inside .env.
-Database
+```
+
+Then update the values inside `.env`.
+
+## Database
+
 Generate the schema and run migrations:
+
+```bash
 npm run db:generate
 npm run db:migrate
+```
+
 (Optional) Seed the database with sample data:
+
+```bash
 npm run seed
-Development
+```
+
+## Development
+
+```bash
 npm run dev
-Project Structure
+```
+
+## Project Structure
+
+```
 realchat-api/
 ├── scripts/
 ├── src/
@@ -47,7 +70,10 @@ realchat-api/
 ├── uploads/
 ├── package.json
 └── README.md
-Planned Features
+```
+
+## Planned Features
+
 - Authentication (JWT)
 - User Profile
 - Private Chat
@@ -57,5 +83,7 @@ Planned Features
 - Notifications
 - Search
 - File Upload
-Status
+
+## Status
+
 🚧 Under Development
