@@ -1,4 +1,4 @@
-# RealChat API
+# RealChat API Documentation
 
 ## Base URL
 
@@ -49,7 +49,7 @@ Ulang request yang gagal
 }
 ```
 
-### Error (400/401/404/409/500)
+### Error (400/401/403/404/409/500)
 
 ```json
 {
@@ -85,6 +85,35 @@ Ulang request yang gagal
 | POST | `/auth/forgot-password` | `{ email }` | 200 — success |
 | POST | `/auth/reset-password` | `{ token, password }` | 200 — success |
 | POST | `/auth/verify-email` | `{ token }` | 200 — success |
+
+### Users (Bearer required)
+
+| Method | Endpoint | Body/Params | Response |
+|--------|----------|-------------|----------|
+| GET | `/users/me` | — | 200 — profile |
+| PUT | `/users/me` | `{ username?, bio?, statusText? }` | 200 — updated profile |
+| GET | `/users/:id` | `:id` (uuid) | 200 — public profile |
+| GET | `/users/search?q=` | `?q=` (query) | 200 — user list (max 20) |
+| PUT | `/users/me/avatar` | `avatar` (multipart file) | 200 — updated profile |
+| PUT | `/users/me/password` | `{ oldPassword, newPassword }` | 200 — success |
+
+### Conversations (Bearer required)
+
+| Method | Endpoint | Body/Params | Response |
+|--------|----------|-------------|----------|
+| POST | `/conversations` | `{ type, participantId }` or `{ type, name, participantIds }` | 201 — conversation |
+| GET | `/conversations` | — | 200 — list with last message |
+| GET | `/conversations/:id` | `:id` (uuid) | 200 — detail + members |
+| DELETE | `/conversations/:id` | `:id` (uuid) | 200 — left conversation |
+
+### Messages (Bearer required)
+
+| Method | Endpoint | Body/Params | Response |
+|--------|----------|-------------|----------|
+| GET | `/conversations/:id/messages` | `?cursor=&limit=50` | 200 — paginated messages |
+| POST | `/conversations/:id/messages` | `{ content, replyToId? }` | 201 — message |
+| PUT | `/conversations/:id/messages/:messageId` | `{ content }` | 200 — edited message |
+| DELETE | `/conversations/:id/messages/:messageId` | — | 200 — deleted |
 
 ---
 
@@ -125,8 +154,12 @@ async function apiFetch(path, options = {}) {
 }
 
 // Usage
-const { data } = await apiFetch('/auth/login', {
+const login = await apiFetch('/auth/login', {
   method: 'POST',
   body: JSON.stringify({ email: '...', password: '...' }),
 });
+
+const myProfile = await apiFetch('/users/me');
+const conversations = await apiFetch('/conversations');
+const messages = await apiFetch('/conversations/123/messages?limit=50');
 ```
