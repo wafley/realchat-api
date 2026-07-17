@@ -15,3 +15,10 @@ export const userIdSchema = z.object({
 export const searchQuerySchema = z.object({
   q: z.string().trim().min(1).max(50),
 });
+
+export const changePasswordSchema = z
+  .object({
+    oldPassword: z.string().min(1),
+    newPassword: z.string().min(6).max(128),
+  })
+  .strict();

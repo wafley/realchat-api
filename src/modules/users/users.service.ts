@@ -1,6 +1,7 @@
 import * as repository from './users.repository';
-import { findUserById, findUserByUsername } from '../auth/auth.repository';
-import { NotFoundError, ConflictError } from '../../utils/errors';
+import { findUserById, findUserByUsername, deleteUserRefreshTokens } from '../auth/auth.repository';
+import { comparePassword, hashPassword } from '../../utils/hashPassword';
+import { NotFoundError, ConflictError, BadRequestError } from '../../utils/errors';
 
 export async function getProfile(userId: string) {
   const user = await findUserById(userId);
@@ -52,4 +53,25 @@ export async function getUserById(targetId: string) {
 
 export async function searchUsers(query: string) {
   return repository.searchUsers(query);
+}
+
+export async function updateAvatar(userId: string, file: Express.Multer.File) {
+  const user = await findUserById(userId);
+  if (!user) throw new NotFoundError('User not found');
+
+  const avatarUrl = `/uploads/${file.filename}`;
+  const updated = await repository.updateAvatar(userId, avatarUrl);
+  return updated;
+}
+
+export async function changePassword(userId: string, oldPassword: string, newPassword: string) {
+  const user = await findUserById(userId);
+  if (!user) throw new NotFoundError('User not found');
+
+  const valid = await comparePassword(oldPassword, user.passwordHash);
+  if (!valid) throw new BadRequestError('Current password is incorrect');
+
+  const passwordHash = await hashPassword(newPassword);
+  await repository.changePassword(userId, passwordHash);
+  await deleteUserRefreshTokens(userId);
 }

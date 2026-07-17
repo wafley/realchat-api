@@ -35,3 +35,16 @@ export async function searchUsers(query: string) {
     .where(or(ilike(users.username, pattern), ilike(users.email, pattern)))
     .limit(20);
 }
+
+export async function updateAvatar(userId: string, avatarUrl: string) {
+  const [user] = await db
+    .update(users)
+    .set({ avatarUrl, updatedAt: new Date() })
+    .where(eq(users.id, userId))
+    .returning(publicUserColumns);
+  return user || null;
+}
+
+export async function changePassword(userId: string, passwordHash: string) {
+  await db.update(users).set({ passwordHash, updatedAt: new Date() }).where(eq(users.id, userId));
+}
