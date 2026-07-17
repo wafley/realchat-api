@@ -90,3 +90,66 @@ export async function leaveConversation(userId: string, conversationId: string) 
 
   await repository.removeMember(conversationId, userId);
 }
+
+export async function sendMessage(
+  userId: string,
+  conversationId: string,
+  data: { content: string; replyToId?: string },
+) {
+  const conversation = await repository.findConversationById(conversationId);
+  if (!conversation) throw new NotFoundError('Conversation not found');
+
+  const member = await repository.isMember(conversationId, userId);
+  if (!member) throw new ForbiddenError('You are not a member of this conversation');
+
+  const message = await repository.createMessage({
+    conversationId,
+    senderId: userId,
+    content: data.content,
+    replyToId: data.replyToId,
+  });
+
+  await repository.createMessageStatus(message.id, userId, 'SENT');
+
+  return message;
+}
+
+export async function getMessages(
+  userId: string,
+  conversationId: string,
+  cursor?: string,
+  limit = 50,
+) {
+  const conversation = await repository.findConversationById(conversationId);
+  if (!conversation) throw new NotFoundError('Conversation not found');
+
+  const member = await repository.isMember(conversationId, userId);
+  if (!member) throw new ForbiddenError('You are not a member of this conversation');
+
+  const rawMessages = await repository.findMessagesByConversationId(conversationId, cursor, limit);
+  const hasMore = rawMessages.length > limit;
+  const messagesList = hasMore ? rawMessages.slice(0, limit) : rawMessages;
+
+  return {
+    messages: messagesList,
+    nextCursor: hasMore ? messagesList[messagesList.length - 1].createdAt.toISOString() : null,
+  };
+}
+
+export async function editMessage(userId: string, messageId: string, content: string) {
+  const message = await repository.findMessageById(messageId);
+  if (!message) throw new NotFoundError('Message not found');
+  if (message.senderId !== userId) throw new ForbiddenError('You can only edit your own messages');
+
+  const updated = await repository.updateMessageContent(messageId, content);
+  return updated;
+}
+
+export async function deleteMessage(userId: string, messageId: string) {
+  const message = await repository.findMessageById(messageId);
+  if (!message) throw new NotFoundError('Message not found');
+  if (message.senderId !== userId)
+    throw new ForbiddenError('You can only delete your own messages');
+
+  await repository.softDeleteMessage(messageId);
+}

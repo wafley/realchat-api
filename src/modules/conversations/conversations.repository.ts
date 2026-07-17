@@ -2,7 +2,8 @@ import db from '../../db/index';
 import { conversations } from '../../db/schema/conversations';
 import { conversationMembers } from '../../db/schema/conversationMembers';
 import { messages } from '../../db/schema/messages';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, lt } from 'drizzle-orm';
+import { messageStatus } from '../../db/schema/messageStatus';
 
 export const conversationColumns = {
   id: conversations.id,
@@ -128,4 +129,76 @@ export async function getLastMessage(conversationId: string) {
     .orderBy(desc(messages.createdAt))
     .limit(1);
   return result || null;
+}
+
+export const messageColumns = {
+  id: messages.id,
+  conversationId: messages.conversationId,
+  senderId: messages.senderId,
+  type: messages.type,
+  content: messages.content,
+  replyToId: messages.replyToId,
+  isPinned: messages.isPinned,
+  isEdited: messages.isEdited,
+  isDeleted: messages.isDeleted,
+  editedAt: messages.editedAt,
+  createdAt: messages.createdAt,
+};
+
+export async function createMessage(data: {
+  conversationId: string;
+  senderId: string;
+  content: string;
+  replyToId?: string;
+}) {
+  const [message] = await db.insert(messages).values(data).returning(messageColumns);
+  return message;
+}
+
+export async function findMessagesByConversationId(
+  conversationId: string,
+  cursor?: string,
+  limit = 50,
+) {
+  const conditions = [eq(messages.conversationId, conversationId)];
+  if (cursor) conditions.push(lt(messages.createdAt, new Date(cursor)));
+
+  return db
+    .select(messageColumns)
+    .from(messages)
+    .where(and(...conditions))
+    .orderBy(desc(messages.createdAt))
+    .limit(limit + 1);
+}
+
+export async function findMessageById(id: string) {
+  const [message] = await db
+    .select(messageColumns)
+    .from(messages)
+    .where(eq(messages.id, id))
+    .limit(1);
+  return message || null;
+}
+
+export async function updateMessageContent(id: string, content: string) {
+  const [message] = await db
+    .update(messages)
+    .set({ content, isEdited: true, editedAt: new Date(), updatedAt: new Date() })
+    .where(eq(messages.id, id))
+    .returning(messageColumns);
+  return message || null;
+}
+
+export async function softDeleteMessage(id: string) {
+  const [message] = await db
+    .update(messages)
+    .set({ isDeleted: true, updatedAt: new Date() })
+    .where(eq(messages.id, id))
+    .returning(messageColumns);
+  return message || null;
+}
+
+export async function createMessageStatus(messageId: string, userId: string, status: string) {
+  const [result] = await db.insert(messageStatus).values({ messageId, userId, status }).returning();
+  return result;
 }

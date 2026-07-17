@@ -13,6 +13,20 @@ router.post(
   controller.createConversation,
 );
 router.get('/', verifyJWT, controller.getConversations);
+router.get('/:id/messages', verifyJWT, controller.getMessages);
+router.post(
+  '/:id/messages',
+  verifyJWT,
+  validate(validator.sendMessageSchema),
+  controller.sendMessage,
+);
+router.put(
+  '/:id/messages/:messageId',
+  verifyJWT,
+  validate(validator.editMessageSchema),
+  controller.editMessage,
+);
+router.delete('/:id/messages/:messageId', verifyJWT, controller.deleteMessage);
 router.get('/:id', verifyJWT, controller.getConversationById);
 router.delete('/:id', verifyJWT, controller.leaveConversation);
 

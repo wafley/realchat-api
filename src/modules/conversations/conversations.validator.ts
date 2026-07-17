@@ -4,6 +4,29 @@ export const conversationIdSchema = z.object({
   id: z.string().uuid(),
 });
 
+export const messageIdSchema = z.object({
+  id: z.string().uuid(),
+  messageId: z.string().uuid(),
+});
+
+export const sendMessageSchema = z
+  .object({
+    content: z.string().trim().min(1).max(5000),
+    replyToId: z.string().uuid().optional(),
+  })
+  .strict();
+
+export const editMessageSchema = z
+  .object({
+    content: z.string().trim().min(1).max(5000),
+  })
+  .strict();
+
+export const paginationSchema = z.object({
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional().default(50),
+});
+
 export const createConversationSchema = z.discriminatedUnion('type', [
   z
     .object({
