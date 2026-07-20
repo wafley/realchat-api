@@ -65,7 +65,6 @@ export async function addMembers(userId: string, groupId: string, userIds: strin
   );
 
   const io = getIO();
-  const room = `conversation:${groupId}`;
 
   newIds.forEach((id) => {
     io.to(`user:${id}`).emit('group:member-added', {

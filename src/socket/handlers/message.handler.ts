@@ -1,7 +1,6 @@
 import { Server, Socket } from 'socket.io';
 import db from '../../db/index';
 import { messages } from '../../db/schema/messages';
-import { conversations } from '../../db/schema/conversations';
 import { conversationMembers } from '../../db/schema/conversationMembers';
 import { eq, and } from 'drizzle-orm';
 
@@ -38,7 +37,7 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
 
       io.to(`conversation:${data.conversationId}`).emit('message:new', message);
       callback?.({ data: message });
-    } catch (error) {
+    } catch {
       callback?.({ error: 'Failed to send message' });
     }
   });
