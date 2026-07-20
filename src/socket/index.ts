@@ -19,7 +19,7 @@ export function getOnlineUsers() {
   return onlineUsers;
 }
 
-export async function initializeSocket(server: HttpServer) {
+export function initializeSocket(server: HttpServer) {
   io = new Server(server, {
     cors: {
       origin: env.corsOrigin.split(',').map((s) => s.trim()),
