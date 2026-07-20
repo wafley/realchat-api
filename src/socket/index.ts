@@ -6,14 +6,21 @@ import db from '../db/index';
 import { users } from '../db/schema/users';
 import { eq } from 'drizzle-orm';
 
+let io: Server;
+
+export function getIO(): Server {
+  if (!io) throw new Error('Socket.IO not initialized');
+  return io;
+}
+
 const onlineUsers = new Map<string, Set<string>>();
 
 export function getOnlineUsers() {
   return onlineUsers;
 }
 
-export function initializeSocket(server: HttpServer) {
-  const io = new Server(server, {
+export async function initializeSocket(server: HttpServer) {
+  io = new Server(server, {
     cors: {
       origin: env.corsOrigin.split(',').map((s) => s.trim()),
       credentials: true,
@@ -40,8 +47,23 @@ export function initializeSocket(server: HttpServer) {
     console.log(`User ${userId} connected (socket: ${socket.id})`);
 
     await db.update(users).set({ isOnline: true }).where(eq(users.id, userId));
-
     socket.join(`user:${userId}`);
+
+    const [
+      { setupPresenceHandlers },
+      { setupMessageHandlers },
+      { setupTypingHandlers },
+      { setupGroupHandlers },
+    ] = await Promise.all([
+      import('./handlers/presence.handler'),
+      import('./handlers/message.handler'),
+      import('./handlers/typing.handler'),
+      import('./handlers/group.handler'),
+    ]);
+    await setupPresenceHandlers(io, socket);
+    setupMessageHandlers(io, socket);
+    setupTypingHandlers(io, socket);
+    setupGroupHandlers(socket);
 
     socket.on('disconnect', async () => {
       console.log(`User ${userId} disconnected (socket: ${socket.id})`);
