@@ -35,7 +35,7 @@ export async function getUserById(req: AuthRequest, res: Response, next: NextFun
 export async function searchUsers(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const { q } = searchQuerySchema.parse(req.query);
-    const result = await userService.searchUsers(q);
+    const result = await userService.searchUsers(req.userId!, q);
     res.status(200).json({ success: true, data: result });
   } catch (error) {
     next(error);

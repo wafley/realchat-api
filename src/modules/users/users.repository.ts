@@ -1,6 +1,6 @@
 import db from '../../db/index';
 import { users } from '../../db/schema/users';
-import { and, eq, ilike, or } from 'drizzle-orm';
+import { and, eq, ilike, ne, or } from 'drizzle-orm';
 
 export const publicUserColumns = {
   id: users.id,
@@ -27,7 +27,7 @@ export async function updateUser(
   return user || null;
 }
 
-export async function searchUsers(query: string) {
+export async function searchUsers(query: string, excludeUserId?: string) {
   const pattern = `%${query}%`;
   return db
     .select(publicUserColumns)
@@ -35,6 +35,7 @@ export async function searchUsers(query: string) {
     .where(
       and(
         eq(users.isVerified, true),
+        excludeUserId ? ne(users.id, excludeUserId) : undefined,
         or(ilike(users.username, pattern), ilike(users.email, pattern)),
       ),
     )
