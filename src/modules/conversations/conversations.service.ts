@@ -17,6 +17,8 @@ export async function createConversation(
 
     const participant = await findUserById(data.participantId);
     if (!participant) throw new NotFoundError('Participant not found');
+    if (!participant.isVerified)
+      throw new BadRequestError('Cannot start a conversation with an unverified user');
 
     const existing = await repository.findPrivateConversation(userId, data.participantId);
     if (existing) return existing;
@@ -37,8 +39,11 @@ export async function createConversation(
   const allIds = [userId, ...(data.participantIds || [])];
   if (allIds.length < 3) throw new BadRequestError('Group must have at least 3 members');
 
-  const user = await findUserById(userId);
-  if (!user) throw new NotFoundError('User not found');
+  for (const id of allIds) {
+    const user = await findUserById(id);
+    if (!user) throw new NotFoundError(`User ${id} not found`);
+    if (!user.isVerified) throw new BadRequestError('All group members must be verified');
+  }
 
   const conversation = await repository.createConversation({
     type: 'GROUP',
