@@ -45,6 +45,10 @@ export async function login(email: string, password: string) {
     throw new UnauthorizedError('Invalid email or password');
   }
 
+  if (!user.isVerified) {
+    throw new UnauthorizedError('Please verify your email before logging in');
+  }
+
   const accessToken = generateAccessToken({ userId: user.id });
   const refreshToken = generateRefreshToken({ userId: user.id });
 
