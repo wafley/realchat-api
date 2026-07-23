@@ -7,6 +7,7 @@ import {
   removeMember as removeConversationMember,
 } from '../conversations/conversations.repository';
 import { NotFoundError, BadRequestError, ForbiddenError } from '../../utils/errors';
+import { getIO } from '../../socket/index';
 
 async function validateGroupAdmin(userId: string, groupId: string) {
   const conversation = await findConversationById(groupId);
@@ -27,15 +28,21 @@ export async function updateGroup(
   groupId: string,
   data: { name?: string; description?: string | null },
 ) {
-  await validateGroupAdmin(userId, groupId);
+  const { members } = await validateGroupAdmin(userId, groupId);
   const updated = await repository.updateGroup(groupId, data);
+  members.forEach((m) => {
+    getIO().to(`user:${m.userId}`).emit('group:updated', updated);
+  });
   return updated;
 }
 
 export async function updateAvatar(userId: string, groupId: string, file: Express.Multer.File) {
-  await validateGroupAdmin(userId, groupId);
+  const { members } = await validateGroupAdmin(userId, groupId);
   const avatarUrl = `/uploads/${file.filename}`;
   const updated = await repository.updateGroupAvatar(groupId, avatarUrl);
+  members.forEach((m) => {
+    getIO().to(`user:${m.userId}`).emit('group:avatar-updated', updated);
+  });
   return updated;
 }
 
@@ -57,6 +64,23 @@ export async function addMembers(userId: string, groupId: string, userIds: strin
     newIds.map((id) => ({ userId: id, role: 'MEMBER' })),
   );
 
+  const io = getIO();
+
+  newIds.forEach((id) => {
+    io.to(`user:${id}`).emit('group:member-added', {
+      conversationId: groupId,
+      addedBy: userId,
+    });
+  });
+
+  members.forEach((m) => {
+    io.to(`user:${m.userId}`).emit('group:member-added', {
+      conversationId: groupId,
+      newMembers: newIds,
+      addedBy: userId,
+    });
+  });
+
   return { added: newIds.length };
 }
 
@@ -74,6 +98,21 @@ export async function removeMember(userId: string, groupId: string, targetUserId
   }
 
   await removeConversationMember(groupId, targetUserId);
+
+  const io = getIO();
+  io.to(`user:${targetUserId}`).emit('group:member-removed', {
+    conversationId: groupId,
+    removedBy: userId,
+  });
+  members
+    .filter((m) => m.userId !== targetUserId)
+    .forEach((m) => {
+      io.to(`user:${m.userId}`).emit('group:member-removed', {
+        conversationId: groupId,
+        targetUserId,
+        removedBy: userId,
+      });
+    });
 }
 
 export async function changeRole(
@@ -97,6 +136,16 @@ export async function changeRole(
   }
 
   await repository.updateMemberRole(groupId, targetUserId, role);
+
+  const io = getIO();
+  members.forEach((m) => {
+    io.to(`user:${m.userId}`).emit('group:member-role-changed', {
+      conversationId: groupId,
+      targetUserId,
+      newRole: role,
+      changedBy: userId,
+    });
+  });
 }
 
 export async function leaveGroup(userId: string, groupId: string) {
@@ -119,4 +168,18 @@ export async function leaveGroup(userId: string, groupId: string) {
   }
 
   await removeConversationMember(groupId, userId);
+
+  const membersAfter = await findMembersByConversationId(groupId);
+  const io = getIO();
+  io.to(`user:${userId}`).emit('group:member-removed', {
+    conversationId: groupId,
+    removedBy: userId,
+  });
+  membersAfter.forEach((m) => {
+    io.to(`user:${m.userId}`).emit('group:member-removed', {
+      conversationId: groupId,
+      targetUserId: userId,
+      removedBy: userId,
+    });
+  });
 }
