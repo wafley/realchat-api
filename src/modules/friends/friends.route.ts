@@ -1,13 +1,28 @@
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { verifyJWT } from '../../middlewares/verifyJWT';
 import { validate } from '../../middlewares/validate';
 import * as validator from './friends.validator';
 import * as controller from './friends.controller';
 
+const friendRequestLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  message: { success: false, message: 'Too many friend requests, please try again later' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 const router = Router();
 
 router.get('/', verifyJWT, controller.getFriends);
-router.post('/request', verifyJWT, validate(validator.sendRequestSchema), controller.sendRequest);
+router.post(
+  '/request',
+  verifyJWT,
+  friendRequestLimiter,
+  validate(validator.sendRequestSchema),
+  controller.sendRequest,
+);
 router.get('/requests', verifyJWT, controller.getIncomingRequests);
 router.get('/requests/sent', verifyJWT, controller.getSentRequests);
 router.post('/accept', verifyJWT, validate(validator.requestIdSchema), controller.acceptRequest);
