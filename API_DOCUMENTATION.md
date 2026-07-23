@@ -115,6 +115,72 @@ Ulang request yang gagal
 | PUT | `/conversations/:id/messages/:messageId` | `{ content }` | 200 — edited message |
 | DELETE | `/conversations/:id/messages/:messageId` | — | 200 — deleted |
 
+### Groups (Bearer required)
+
+| Method | Endpoint | Body/Params | Response |
+|--------|----------|-------------|----------|
+| PUT | `/groups/:id` | `{ name?, description? }` | 200 — updated group |
+| PUT | `/groups/:id/avatar` | `avatar` (multipart file) | 200 — updated group |
+| POST | `/groups/:id/members` | `{ userIds: string[] }` | 200 — added members |
+| DELETE | `/groups/:id/members/:userId` | `:userId` (uuid) | 200 — removed |
+| PUT | `/groups/:id/members/:userId/role` | `{ role }` | 200 — updated |
+| DELETE | `/groups/:id/leave` | — | 200 — left group |
+
+### Friends (Bearer required)
+
+| Method | Endpoint | Body/Params | Response |
+|--------|----------|-------------|----------|
+| GET | `/friends` | — | 200 — friends list |
+| POST | `/friends/request` | `{ userId }` | 201 — request sent |
+| GET | `/friends/requests` | — | 200 — incoming requests |
+| GET | `/friends/requests/sent` | — | 200 — sent requests |
+| POST | `/friends/accept` | `{ requestId }` | 200 — accepted |
+| POST | `/friends/reject` | `{ requestId }` | 200 — rejected |
+| DELETE | `/friends/request/:userId` | `:userId` (uuid) | 200 — cancelled |
+| DELETE | `/friends/:userId` | `:userId` (uuid) | 200 — unfriended |
+
+---
+
+## Socket Events
+
+### Connection
+
+```ts
+const socket = io('http://{{BACKEND_IP}}:3000', {
+  auth: { token: '<accessToken>' },
+});
+```
+
+### Client → Server
+
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `message:send` | `{ conversationId, content, replyToId? }` | Send a message |
+| `message:delete` | `{ conversationId, messageId }` | Delete a message |
+| `typing:start` | `{ conversationId }` | User started typing |
+| `typing:stop` | `{ conversationId }` | User stopped typing |
+
+### Server → Client
+
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `message:new` | `{ conversationId, message }` | New message in conversation |
+| `message:deleted` | `{ conversationId, messageId }` | Message deleted |
+| `typing:start` | `{ conversationId, userId }` | User started typing |
+| `typing:stop` | `{ conversationId, userId }` | User stopped typing |
+| `presence:online` | `{ userId }` | User came online |
+| `presence:offline` | `{ userId }` | User went offline |
+| `group:updated` | `{ id, name?, description? }` | Group info updated |
+| `group:avatar-updated` | `{ id, avatarUrl }` | Group avatar changed |
+| `group:member-added` | `{ conversationId, members }` | New members added |
+| `group:member-removed` | `{ conversationId, removedUserId }` | Member removed |
+| `group:role-changed` | `{ conversationId, userId, role }` | Member role changed |
+| `friend:request-received` | `{ request }` | Friend request received |
+| `friend:request-cancelled` | `{ requestId }` | Request cancelled |
+| `friend:request-accepted` | `{ request }` | Request accepted |
+| `friend:request-rejected` | `{ request }` | Request rejected |
+| `friend:unfriended` | `{ unfriendedBy }` | You were unfriended |
+
 ---
 
 ## Example: Fetch Helper with Auto-Refresh
