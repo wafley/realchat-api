@@ -2,6 +2,7 @@ import * as repository from './users.repository';
 import { findUserById, findUserByUsername, deleteUserRefreshTokens } from '../auth/auth.repository';
 import { comparePassword, hashPassword } from '../../utils/hashPassword';
 import { NotFoundError, ConflictError, BadRequestError } from '../../utils/errors';
+import { findFriendsByUserId } from '../friends/friends.repository';
 
 export async function getProfile(userId: string) {
   const user = await findUserById(userId);
@@ -51,8 +52,15 @@ export async function getUserById(targetId: string) {
   };
 }
 
-export async function searchUsers(query: string) {
-  return repository.searchUsers(query);
+export async function searchUsers(userId: string, query: string) {
+  const results = await repository.searchUsers(query);
+  const friends = await findFriendsByUserId(userId);
+  const friendIdSet = new Set(friends.map((f) => f.friendId));
+
+  return results.map((user) => ({
+    ...user,
+    isFriend: friendIdSet.has(user.id),
+  }));
 }
 
 export async function updateAvatar(userId: string, file: Express.Multer.File) {
