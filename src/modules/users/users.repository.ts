@@ -1,6 +1,6 @@
 import db from '../../db/index';
 import { users } from '../../db/schema/users';
-import { eq, ilike, or } from 'drizzle-orm';
+import { and, eq, ilike, or } from 'drizzle-orm';
 
 export const publicUserColumns = {
   id: users.id,
@@ -32,7 +32,12 @@ export async function searchUsers(query: string) {
   return db
     .select(publicUserColumns)
     .from(users)
-    .where(or(ilike(users.username, pattern), ilike(users.email, pattern)))
+    .where(
+      and(
+        eq(users.isVerified, true),
+        or(ilike(users.username, pattern), ilike(users.email, pattern)),
+      ),
+    )
     .limit(20);
 }
 
