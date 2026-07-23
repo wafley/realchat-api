@@ -4,6 +4,7 @@ import userRoutes from '../modules/users/users.route';
 import conversationRoutes from '../modules/conversations/conversations.route';
 import groupRoutes from '../modules/groups/groups.route';
 import friendRoutes from '../modules/friends/friends.route';
+import notificationRoutes from '../modules/notifications/notifications.route';
 
 const router = Router();
 
@@ -12,5 +13,6 @@ router.use('/users', userRoutes);
 router.use('/conversations', conversationRoutes);
 router.use('/groups', groupRoutes);
 router.use('/friends', friendRoutes);
+router.use('/notifications', notificationRoutes);
 
 export default router;
