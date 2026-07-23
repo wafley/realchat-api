@@ -34,12 +34,10 @@ export async function verifyJWT(req: AuthRequest, res: Response, next: NextFunct
     }
 
     if (!user.isVerified) {
-      res
-        .status(401)
-        .json({
-          success: false,
-          message: 'Please verify your email before accessing this resource',
-        });
+      res.status(401).json({
+        success: false,
+        message: 'Please verify your email before accessing this resource',
+      });
       return;
     }
 
