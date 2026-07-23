@@ -2,6 +2,7 @@ import * as repository from './friends.repository';
 import { findUserById } from '../auth/auth.repository';
 import { NotFoundError, BadRequestError } from '../../utils/errors';
 import { getIO } from '../../socket/index';
+import { createAndEmit } from '../notifications/notifications.service';
 
 export async function sendRequest(senderId: string, receiverId: string) {
   if (senderId === receiverId) throw new BadRequestError('Cannot send friend request to yourself');
@@ -17,9 +18,19 @@ export async function sendRequest(senderId: string, receiverId: string) {
   const friendship = await repository.findFriendship(senderId, receiverId);
   if (friendship) throw new BadRequestError('Already friends');
 
+  const sender = await findUserById(senderId);
   const request = await repository.createRequest({ senderId, receiverId });
 
   getIO().to(`user:${receiverId}`).emit('friend:request-received', { request });
+
+  await createAndEmit({
+    userId: receiverId,
+    type: 'friend_request_received',
+    actorId: senderId,
+    title: 'Friend Request',
+    body: `${sender?.username || 'Someone'} sent you a friend request.`,
+  });
+
   return request;
 }
 
@@ -69,9 +80,19 @@ export async function acceptRequest(userId: string, requestId: string) {
     throw new BadRequestError('You can only accept requests sent to you');
   if (request.status !== 'PENDING') throw new BadRequestError('Request is no longer pending');
 
+  const accepter = await findUserById(userId);
   const updated = await repository.updateRequestStatus(requestId, 'ACCEPTED');
 
   getIO().to(`user:${request.senderId}`).emit('friend:request-accepted', { request: updated });
+
+  await createAndEmit({
+    userId: request.senderId,
+    type: 'friend_request_accepted',
+    actorId: userId,
+    title: 'Friend Request Accepted',
+    body: `${accepter?.username || 'Someone'} accepted your friend request.`,
+  });
+
   return updated;
 }
 
