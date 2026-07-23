@@ -53,7 +53,7 @@ export async function getUserById(targetId: string) {
 }
 
 export async function searchUsers(userId: string, query: string) {
-  const results = await repository.searchUsers(query);
+  const results = await repository.searchUsers(query, userId);
   const friends = await findFriendsByUserId(userId);
   const friendIdSet = new Set(friends.map((f) => f.friendId));
 
