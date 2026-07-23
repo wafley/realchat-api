@@ -1,6 +1,6 @@
 import db from '../../db/index';
 import { notifications } from '../../db/schema/notifications';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 
 export const notificationColumns = {
   id: notifications.id,
@@ -33,7 +33,7 @@ export async function findByUserId(userId: string, limit = 20, offset = 0) {
     .select(notificationColumns)
     .from(notifications)
     .where(eq(notifications.userId, userId))
-    .orderBy(notifications.createdAt)
+    .orderBy(desc(notifications.createdAt))
     .limit(limit)
     .offset(offset);
 }
