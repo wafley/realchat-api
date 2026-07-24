@@ -5,7 +5,12 @@ import { sendVerificationEmail, sendResetPasswordEmail } from '../../utils/sendE
 import { ConflictError, UnauthorizedError, BadRequestError } from '../../utils/errors';
 import crypto from 'crypto';
 
-export async function register(data: { username: string; email: string; password: string }) {
+export async function register(data: {
+  username: string;
+  email: string;
+  password: string;
+  fullName?: string;
+}) {
   const existingEmail = await repository.findUserByEmail(data.email);
   if (existingEmail) {
     throw new ConflictError('Email already registered');
@@ -21,6 +26,7 @@ export async function register(data: { username: string; email: string; password
     username: data.username,
     email: data.email,
     passwordHash,
+    fullName: data.fullName,
   });
 
   const verificationToken = crypto.randomBytes(32).toString('hex');
@@ -31,7 +37,12 @@ export async function register(data: { username: string; email: string; password
 
   sendVerificationEmail(user.email, verificationToken).catch(console.error);
 
-  return { id: user.id, username: user.username, email: user.email };
+  return {
+    id: user.id,
+    username: user.username,
+    email: user.email,
+    fullName: user.fullName,
+  };
 }
 
 export async function login(email: string, password: string) {

@@ -5,6 +5,7 @@ export const registerSchema = z
     username: z.string().trim().min(3).max(30),
     email: z.string().trim().email(),
     password: z.string().min(6).max(128),
+    fullName: z.string().trim().min(1).max(100).optional(),
   })
   .strict();
 

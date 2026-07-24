@@ -6,6 +6,7 @@ export const publicUserColumns = {
   id: users.id,
   username: users.username,
   email: users.email,
+  fullName: users.fullName,
   bio: users.bio,
   avatarUrl: users.avatarUrl,
   statusText: users.statusText,
@@ -17,7 +18,7 @@ export const publicUserColumns = {
 
 export async function updateUser(
   userId: string,
-  data: { username?: string; bio?: string | null; statusText?: string },
+  data: { username?: string; fullName?: string; bio?: string | null; statusText?: string },
 ) {
   const [user] = await db
     .update(users)

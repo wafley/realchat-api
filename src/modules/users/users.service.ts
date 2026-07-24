@@ -12,6 +12,7 @@ export async function getProfile(userId: string) {
     id: user.id,
     username: user.username,
     email: user.email,
+    fullName: user.fullName,
     bio: user.bio,
     avatarUrl: user.avatarUrl,
     statusText: user.statusText,
@@ -24,7 +25,7 @@ export async function getProfile(userId: string) {
 
 export async function updateProfile(
   userId: string,
-  data: { username?: string; bio?: string | null; statusText?: string },
+  data: { username?: string; fullName?: string; bio?: string | null; statusText?: string },
 ) {
   const user = await findUserById(userId);
   if (!user) throw new NotFoundError('User not found');
@@ -45,6 +46,7 @@ export async function getUserById(targetId: string) {
   return {
     id: user.id,
     username: user.username,
+    fullName: user.fullName,
     avatarUrl: user.avatarUrl,
     statusText: user.statusText,
     isOnline: user.isOnline,
@@ -58,7 +60,13 @@ export async function searchUsers(userId: string, query: string) {
   const friendIdSet = new Set(friends.map((f) => f.friendId));
 
   return results.map((user) => ({
-    ...user,
+    id: user.id,
+    username: user.username,
+    fullName: user.fullName,
+    avatarUrl: user.avatarUrl,
+    statusText: user.statusText,
+    isOnline: user.isOnline,
+    lastSeenAt: user.lastSeenAt,
     isFriend: friendIdSet.has(user.id),
   }));
 }
