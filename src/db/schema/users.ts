@@ -6,6 +6,7 @@ export const users = pgTable('users', {
   email: varchar('email', { length: 255 }).notNull().unique(),
   passwordHash: text('password_hash').notNull(),
   bio: text('bio'),
+  fullName: varchar('full_name', { length: 100 }),
   avatarUrl: text('avatar_url'),
   statusText: varchar('status_text', { length: 100 }).default('Hey there!'),
   isOnline: boolean('is_online').notNull().default(false),
