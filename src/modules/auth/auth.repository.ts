@@ -3,7 +3,12 @@ import { users } from '../../db/schema/users';
 import { refreshTokens } from '../../db/schema/refreshTokens';
 import { eq, and, gt } from 'drizzle-orm';
 
-export async function createUser(data: { username: string; email: string; passwordHash: string }) {
+export async function createUser(data: {
+  username: string;
+  email: string;
+  passwordHash: string;
+  fullName?: string;
+}) {
   const [user] = await db.insert(users).values(data).returning();
   return user;
 }
