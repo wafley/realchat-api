@@ -7,6 +7,7 @@ export async function createAndEmit(data: {
   actorId?: string;
   conversationId?: string;
   messageId?: string;
+  friendRequestId?: string;
   title: string;
   body: string;
 }) {

@@ -30,9 +30,14 @@ router.post('/reject', verifyJWT, validate(validator.requestIdSchema), controlle
 router.delete(
   '/request/:userId',
   verifyJWT,
-  validate(validator.userIdParamSchema),
+  validate(validator.userIdParamSchema, 'params'),
   controller.cancelRequest,
 );
-router.delete('/:userId', verifyJWT, validate(validator.userIdParamSchema), controller.unfriend);
+router.delete(
+  '/:userId',
+  verifyJWT,
+  validate(validator.userIdParamSchema, 'params'),
+  controller.unfriend,
+);
 
 export default router;

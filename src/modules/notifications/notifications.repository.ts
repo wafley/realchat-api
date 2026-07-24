@@ -9,6 +9,7 @@ export const notificationColumns = {
   actorId: notifications.actorId,
   conversationId: notifications.conversationId,
   messageId: notifications.messageId,
+  friendRequestId: notifications.friendRequestId,
   title: notifications.title,
   body: notifications.body,
   isRead: notifications.isRead,
@@ -21,6 +22,7 @@ export async function create(data: {
   actorId?: string;
   conversationId?: string;
   messageId?: string;
+  friendRequestId?: string;
   title: string;
   body: string;
 }) {
