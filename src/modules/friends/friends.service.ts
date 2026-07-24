@@ -27,6 +27,7 @@ export async function sendRequest(senderId: string, receiverId: string) {
     userId: receiverId,
     type: 'friend_request_received',
     actorId: senderId,
+    friendRequestId: request.id,
     title: 'Friend Request',
     body: `${sender?.username || 'Someone'} sent you a friend request.`,
   });
@@ -89,6 +90,7 @@ export async function acceptRequest(userId: string, requestId: string) {
     userId: request.senderId,
     type: 'friend_request_accepted',
     actorId: userId,
+    friendRequestId: request.id,
     title: 'Friend Request Accepted',
     body: `${accepter?.username || 'Someone'} accepted your friend request.`,
   });
