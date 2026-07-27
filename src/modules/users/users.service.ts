@@ -23,6 +23,8 @@ export async function getProfile(userId: string) {
   };
 }
 
+const USERNAME_COOLDOWN_DAYS = 14;
+
 export async function updateProfile(
   userId: string,
   data: { username?: string; fullName?: string; bio?: string | null; statusText?: string },
@@ -33,9 +35,22 @@ export async function updateProfile(
   if (data.username && data.username !== user.username) {
     const existing = await findUserByUsername(data.username);
     if (existing) throw new ConflictError('Username already taken');
+
+    if (user.usernameUpdatedAt) {
+      const daysSinceLastChange = (Date.now() - new Date(user.usernameUpdatedAt).getTime()) / (1000 * 60 * 60 * 24);
+      if (daysSinceLastChange < USERNAME_COOLDOWN_DAYS) {
+        const remaining = Math.ceil(USERNAME_COOLDOWN_DAYS - daysSinceLastChange);
+        throw new BadRequestError(`You can change your username again in ${remaining} day(s)`);
+      }
+    }
   }
 
-  const updated = await repository.updateUser(userId, data);
+  const updateData: Parameters<typeof repository.updateUser>[1] = { ...data };
+  if (data.username && data.username !== user.username) {
+    updateData.usernameUpdatedAt = new Date();
+  }
+
+  const updated = await repository.updateUser(userId, updateData);
   return updated;
 }
 

@@ -14,11 +14,12 @@ export const publicUserColumns = {
   lastSeenAt: users.lastSeenAt,
   isVerified: users.isVerified,
   createdAt: users.createdAt,
+  usernameUpdatedAt: users.usernameUpdatedAt,
 };
 
 export async function updateUser(
   userId: string,
-  data: { username?: string; fullName?: string; bio?: string | null; statusText?: string },
+  data: { username?: string; fullName?: string; bio?: string | null; statusText?: string; usernameUpdatedAt?: Date },
 ) {
   const [user] = await db
     .update(users)

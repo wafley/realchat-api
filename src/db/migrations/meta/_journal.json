@@ -36,6 +36,13 @@
       "when": 1785388800000,
       "tag": "0004_jolly_kangaroo",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1785456000000,
+      "tag": "0005_gentle_cyclops",
+      "breakpoints": true
     }
   ]
 }
