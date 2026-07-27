@@ -2,73 +2,65 @@ import { Response, NextFunction } from 'express';
 import { AuthRequest } from '../../middlewares/verifyJWT';
 import * as friendService from './friends.service';
 
-export async function sendRequest(req: AuthRequest, res: Response, next: NextFunction) {
+export async function followUser(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const result = await friendService.sendRequest(req.userId!, req.body.userId);
-    res.status(201).json({ success: true, message: 'Friend request sent', data: result });
+    await friendService.followUser(req.userId!, req.params.userId as string);
+    res.status(200).json({ success: true, message: 'User followed' });
   } catch (error) {
     next(error);
   }
 }
 
-export async function getIncomingRequests(req: AuthRequest, res: Response, next: NextFunction) {
+export async function unfollowUser(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const result = await friendService.getIncomingRequests(req.userId!);
+    await friendService.unfollowUser(req.userId!, req.params.userId as string);
+    res.status(200).json({ success: true, message: 'User unfollowed' });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getMyFollowing(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const sort = req.query.sort as string | undefined;
+    const result = await friendService.getMyFollowing(req.userId!, sort);
     res.status(200).json({ success: true, data: result });
   } catch (error) {
     next(error);
   }
 }
 
-export async function getSentRequests(req: AuthRequest, res: Response, next: NextFunction) {
+export async function getMyFollowers(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const result = await friendService.getSentRequests(req.userId!);
+    const result = await friendService.getMyFollowers(req.userId!);
     res.status(200).json({ success: true, data: result });
   } catch (error) {
     next(error);
   }
 }
 
-export async function cancelRequest(req: AuthRequest, res: Response, next: NextFunction) {
+export async function getUserFollowing(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    await friendService.cancelRequest(req.userId!, req.params.userId as string);
-    res.status(200).json({ success: true, message: 'Friend request cancelled' });
-  } catch (error) {
-    next(error);
-  }
-}
-
-export async function getFriends(req: AuthRequest, res: Response, next: NextFunction) {
-  try {
-    const result = await friendService.getFriends(req.userId!);
+    const result = await friendService.getUserFollowing(req.params.userId as string);
     res.status(200).json({ success: true, data: result });
   } catch (error) {
     next(error);
   }
 }
 
-export async function acceptRequest(req: AuthRequest, res: Response, next: NextFunction) {
+export async function getUserFollowers(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const result = await friendService.acceptRequest(req.userId!, req.body.requestId);
-    res.status(200).json({ success: true, message: 'Friend request accepted', data: result });
+    const result = await friendService.getUserFollowers(req.params.userId as string);
+    res.status(200).json({ success: true, data: result });
   } catch (error) {
     next(error);
   }
 }
 
-export async function rejectRequest(req: AuthRequest, res: Response, next: NextFunction) {
+export async function getRelationship(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const result = await friendService.rejectRequest(req.userId!, req.body.requestId);
-    res.status(200).json({ success: true, message: 'Friend request rejected', data: result });
-  } catch (error) {
-    next(error);
-  }
-}
-
-export async function unfriend(req: AuthRequest, res: Response, next: NextFunction) {
-  try {
-    await friendService.unfriend(req.userId!, req.params.userId as string);
-    res.status(200).json({ success: true, message: 'Friend removed' });
+    const result = await friendService.getRelationship(req.userId!, req.params.userId as string);
+    res.status(200).json({ success: true, data: { status: result } });
   } catch (error) {
     next(error);
   }
