@@ -14,14 +14,16 @@ export async function followUser(myId: string, targetUserId: string) {
 
   const me = await findUserById(myId);
 
-  getIO().to(`user:${targetUserId}`).emit('follow:new', {
-    follower: {
-      id: myId,
-      username: me?.username,
-      fullName: me?.fullName,
-      avatarUrl: me?.avatarUrl,
-    },
-  });
+  getIO()
+    .to(`user:${targetUserId}`)
+    .emit('follow:new', {
+      follower: {
+        id: myId,
+        username: me?.username,
+        fullName: me?.fullName,
+        avatarUrl: me?.avatarUrl,
+      },
+    });
 
   await createAndEmit({
     userId: targetUserId,
@@ -42,7 +44,10 @@ export async function unfollowUser(myId: string, targetUserId: string) {
   getIO().to(`user:${targetUserId}`).emit('follow:remove', { userId: myId });
 }
 
-async function attachUserDetails(rows: { followerId: string; followingId: string }[], type: 'follower' | 'following') {
+async function attachUserDetails(
+  rows: { followerId: string; followingId: string }[],
+  type: 'follower' | 'following',
+) {
   const userIds = rows.map((r) => (type === 'following' ? r.followingId : r.followerId));
   const result = [];
   for (const id of userIds) {

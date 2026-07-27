@@ -37,7 +37,8 @@ export async function updateProfile(
     if (existing) throw new ConflictError('Username already taken');
 
     if (user.usernameUpdatedAt) {
-      const daysSinceLastChange = (Date.now() - new Date(user.usernameUpdatedAt).getTime()) / (1000 * 60 * 60 * 24);
+      const daysSinceLastChange =
+        (Date.now() - new Date(user.usernameUpdatedAt).getTime()) / (1000 * 60 * 60 * 24);
       if (daysSinceLastChange < USERNAME_COOLDOWN_DAYS) {
         const remaining = Math.ceil(USERNAME_COOLDOWN_DAYS - daysSinceLastChange);
         throw new BadRequestError(`You can change your username again in ${remaining} day(s)`);
