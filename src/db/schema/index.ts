@@ -7,4 +7,4 @@ export { messageReactions } from './messageReactions';
 export { messageStatus } from './messageStatus';
 export { notifications } from './notifications';
 export { blockedUsers } from './blockedUsers';
-export { friendRequests } from './friendRequests';
+export { follows } from './follows';

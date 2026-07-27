@@ -10,7 +10,7 @@ async function reset() {
     DROP TABLE IF EXISTS message_status CASCADE;
     DROP TABLE IF EXISTS messages CASCADE;
     DROP TABLE IF EXISTS notifications CASCADE;
-    DROP TABLE IF EXISTS friend_requests CASCADE;
+    DROP TABLE IF EXISTS follows CASCADE;
     DROP TABLE IF EXISTS blocked_users CASCADE;
     DROP TABLE IF EXISTS conversation_members CASCADE;
     DROP TABLE IF EXISTS refresh_tokens CASCADE;
