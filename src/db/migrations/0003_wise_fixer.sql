@@ -1,0 +1,2 @@
+ALTER TABLE "notifications" ADD COLUMN "friend_request_id" uuid;--> statement-breakpoint
+ALTER TABLE "notifications" ADD CONSTRAINT "notifications_friend_request_id_friend_requests_id_fk" FOREIGN KEY ("friend_request_id") REFERENCES "public"."friend_requests"("id") ON DELETE set null ON UPDATE no action;
