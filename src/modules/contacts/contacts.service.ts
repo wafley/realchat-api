@@ -50,6 +50,17 @@ export async function removeContact(myId: string, targetUserId: string) {
   getIO().to(`user:${targetUserId}`).emit('contact:remove', { userId: myId });
 }
 
+export async function updateContactCustomName(
+  myId: string,
+  targetUserId: string,
+  customName: string,
+) {
+  const existing = await repository.findContact(myId, targetUserId);
+  if (!existing) throw new NotFoundError('Contact not found');
+
+  return repository.updateContactCustomName(myId, targetUserId, customName);
+}
+
 export async function addContactsBulk(myId: string, targetUserIds: string[]) {
   const uniqueIds = [...new Set(targetUserIds)].filter((id) => id !== myId);
   if (uniqueIds.length === 0) return [];

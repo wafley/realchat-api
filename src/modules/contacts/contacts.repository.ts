@@ -44,6 +44,19 @@ export async function removeContact(userId: string, contactId: string) {
     .where(and(eq(contacts.userId, userId), eq(contacts.contactId, contactId)));
 }
 
+export async function updateContactCustomName(
+  userId: string,
+  contactId: string,
+  customName: string,
+) {
+  const [contact] = await db
+    .update(contacts)
+    .set({ customName })
+    .where(and(eq(contacts.userId, userId), eq(contacts.contactId, contactId)))
+    .returning(contactColumns);
+  return contact || null;
+}
+
 export async function findContact(userId: string, contactId: string) {
   const [contact] = await db
     .select(contactColumns)

@@ -18,3 +18,9 @@ export const addContactByUsernameSchema = z
     customName: z.string().trim().min(1).max(50).optional(),
   })
   .strict();
+
+export const updateCustomNameSchema = z
+  .object({
+    customName: z.string().trim().max(50),
+  })
+  .strict();

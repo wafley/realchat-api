@@ -19,6 +19,13 @@ router.delete(
   validate(validator.userIdParamSchema, 'params'),
   controller.removeContact,
 );
+router.patch(
+  '/:userId',
+  verifyJWT,
+  validate(validator.userIdParamSchema, 'params'),
+  validate(validator.updateCustomNameSchema),
+  controller.updateCustomName,
+);
 router.get('/', verifyJWT, controller.getMyContacts);
 router.get(
   '/:userId',

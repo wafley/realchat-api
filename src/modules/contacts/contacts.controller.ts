@@ -24,6 +24,19 @@ export async function removeContact(req: AuthRequest, res: Response, next: NextF
   }
 }
 
+export async function updateCustomName(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const result = await contactService.updateContactCustomName(
+      req.userId!,
+      req.params.userId as string,
+      req.body.customName as string,
+    );
+    res.status(200).json({ success: true, message: 'Custom name updated', data: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function addContactsBulk(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const result = await contactService.addContactsBulk(req.userId!, req.body.userIds as string[]);
