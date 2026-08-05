@@ -4,6 +4,8 @@ import { validate } from '../../middlewares/validate';
 import { upload } from '../../middlewares/upload';
 import * as validator from './users.validator';
 import * as controller from './users.controller';
+import { getRelationship } from '../contacts/contacts.controller';
+import { userIdParamSchema } from '../contacts/contacts.validator';
 
 const router = Router();
 
@@ -17,6 +19,12 @@ router.put(
   controller.changePassword,
 );
 router.get('/search', verifyJWT, controller.searchUsers);
+router.get(
+  '/:userId/relationship',
+  verifyJWT,
+  validate(userIdParamSchema, 'params'),
+  getRelationship,
+);
 router.get('/:id', verifyJWT, controller.getUserById);
 
 export default router;

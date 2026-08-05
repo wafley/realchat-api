@@ -78,7 +78,7 @@ Ulang request yang gagal
 
 | Method | Endpoint | Body | Response |
 |--------|----------|------|----------|
-| POST | `/auth/register` | `{ username, email, password }` | 201 — user data |
+| POST | `/auth/register` | `{ username, email, password, fullName? }` | 201 — user data |
 | POST | `/auth/login` | `{ email, password }` | 200 — tokens + user |
 | POST | `/auth/refresh` | `{ refreshToken }` | 200 — new tokens |
 | POST | `/auth/logout` | `{ refreshToken }` | 200 — success |
@@ -91,7 +91,7 @@ Ulang request yang gagal
 | Method | Endpoint | Body/Params | Response |
 |--------|----------|-------------|----------|
 | GET | `/users/me` | — | 200 — profile |
-| PUT | `/users/me` | `{ username?, bio?, statusText? }` | 200 — updated profile |
+| PUT | `/users/me` | `{ username?, fullName?, bio?, statusText? }` | 200 — updated profile |
 | GET | `/users/:id` | `:id` (uuid) | 200 — public profile |
 | GET | `/users/search?q=` | `?q=` (query) | 200 — user list (max 20) |
 | PUT | `/users/me/avatar` | `avatar` (multipart file) | 200 — updated profile |
@@ -126,18 +126,25 @@ Ulang request yang gagal
 | PUT | `/groups/:id/members/:userId/role` | `{ role }` | 200 — updated |
 | DELETE | `/groups/:id/leave` | — | 200 — left group |
 
-### Friends (Bearer required)
+### Contacts (Bearer required)
 
 | Method | Endpoint | Body/Params | Response |
 |--------|----------|-------------|----------|
-| GET | `/friends` | — | 200 — friends list |
-| POST | `/friends/request` | `{ userId }` | 201 — request sent |
-| GET | `/friends/requests` | — | 200 — incoming requests |
-| GET | `/friends/requests/sent` | — | 200 — sent requests |
-| POST | `/friends/accept` | `{ requestId }` | 200 — accepted |
-| POST | `/friends/reject` | `{ requestId }` | 200 — rejected |
-| DELETE | `/friends/request/:userId` | `:userId` (uuid) | 200 — cancelled |
-| DELETE | `/friends/:userId` | `:userId` (uuid) | 200 — unfriended |
+| POST | `/contacts/bulk` | `{ userIds: string[] }` (max 100) | 200 — added contacts |
+| POST | `/contacts/:userId` | `:userId` (uuid) | 200 — contact added |
+| DELETE | `/contacts/:userId` | `:userId` (uuid) | 200 — contact removed |
+| GET | `/contacts` | `?sort=recent\|alphabetical` | 200 — my contacts |
+| GET | `/contacts/:userId` | `:userId` (uuid) | 200 — `{ isContact: boolean }` |
+| GET | `/users/:userId/relationship` | `:userId` (uuid) | 200 — `{ status }` (`mutual` / `added` / `added_you` / `none`) |
+
+### Notifications (Bearer required)
+
+| Method | Endpoint | Body/Params | Response |
+|--------|----------|-------------|----------|
+| GET | `/notifications` | `?limit=&offset=` | 200 — notifications + totalUnread |
+| GET | `/notifications/unread-count` | — | 200 — `{ count }` |
+| PUT | `/notifications/read-all` | — | 200 — success |
+| PUT | `/notifications/:id/read` | `:id` (uuid) | 200 — marked read |
 
 ---
 
@@ -159,6 +166,8 @@ const socket = io('http://{{BACKEND_IP}}:3000', {
 | `message:delete` | `{ conversationId, messageId }` | Delete a message |
 | `typing:start` | `{ conversationId }` | User started typing |
 | `typing:stop` | `{ conversationId }` | User stopped typing |
+| `group:join` | `{ conversationId }` | Join a group room |
+| `group:leave` | `{ conversationId }` | Leave a group room |
 
 ### Server → Client
 
@@ -175,11 +184,9 @@ const socket = io('http://{{BACKEND_IP}}:3000', {
 | `group:member-added` | `{ conversationId, members }` | New members added |
 | `group:member-removed` | `{ conversationId, removedUserId }` | Member removed |
 | `group:role-changed` | `{ conversationId, userId, role }` | Member role changed |
-| `friend:request-received` | `{ request }` | Friend request received |
-| `friend:request-cancelled` | `{ requestId }` | Request cancelled |
-| `friend:request-accepted` | `{ request }` | Request accepted |
-| `friend:request-rejected` | `{ request }` | Request rejected |
-| `friend:unfriended` | `{ unfriendedBy }` | You were unfriended |
+| `contact:new` | `{ contact: { id, username, fullName, avatarUrl } }` | Someone added you as contact |
+| `contact:remove` | `{ userId }` | Someone removed you from their contacts |
+| `notification:new` | `{ notification }` | New notification |
 
 ---
 

@@ -19,7 +19,13 @@ export const publicUserColumns = {
 
 export async function updateUser(
   userId: string,
-  data: { username?: string; fullName?: string; bio?: string | null; statusText?: string; usernameUpdatedAt?: Date },
+  data: {
+    username?: string;
+    fullName?: string;
+    bio?: string | null;
+    statusText?: string;
+    usernameUpdatedAt?: Date;
+  },
 ) {
   const [user] = await db
     .update(users)

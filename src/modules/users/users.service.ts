@@ -2,7 +2,7 @@ import * as repository from './users.repository';
 import { findUserById, findUserByUsername, deleteUserRefreshTokens } from '../auth/auth.repository';
 import { comparePassword, hashPassword } from '../../utils/hashPassword';
 import { NotFoundError, ConflictError, BadRequestError } from '../../utils/errors';
-import { findFriendsByUserId } from '../friends/friends.repository';
+import { getContactIds } from '../contacts/contacts.service';
 
 export async function getProfile(userId: string) {
   const user = await findUserById(userId);
@@ -37,7 +37,8 @@ export async function updateProfile(
     if (existing) throw new ConflictError('Username already taken');
 
     if (user.usernameUpdatedAt) {
-      const daysSinceLastChange = (Date.now() - new Date(user.usernameUpdatedAt).getTime()) / (1000 * 60 * 60 * 24);
+      const daysSinceLastChange =
+        (Date.now() - new Date(user.usernameUpdatedAt).getTime()) / (1000 * 60 * 60 * 24);
       if (daysSinceLastChange < USERNAME_COOLDOWN_DAYS) {
         const remaining = Math.ceil(USERNAME_COOLDOWN_DAYS - daysSinceLastChange);
         throw new BadRequestError(`You can change your username again in ${remaining} day(s)`);
@@ -71,8 +72,8 @@ export async function getUserById(targetId: string) {
 
 export async function searchUsers(userId: string, query: string) {
   const results = await repository.searchUsers(query, userId);
-  const friends = await findFriendsByUserId(userId);
-  const friendIdSet = new Set(friends.map((f) => f.friendId));
+  const contactIds = await getContactIds(userId);
+  const contactIdSet = new Set(contactIds);
 
   return results.map((user) => ({
     id: user.id,
@@ -82,7 +83,7 @@ export async function searchUsers(userId: string, query: string) {
     statusText: user.statusText,
     isOnline: user.isOnline,
     lastSeenAt: user.lastSeenAt,
-    isFriend: friendIdSet.has(user.id),
+    isContact: contactIdSet.has(user.id),
   }));
 }
 
