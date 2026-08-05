@@ -60,11 +60,3 @@ export async function findContacts(userId: string, sort?: string) {
   }
   return query.orderBy(desc(contacts.createdAt));
 }
-
-export async function findContactIds(userId: string) {
-  const rows = await db
-    .select({ id: contacts.contactId })
-    .from(contacts)
-    .where(eq(contacts.userId, userId));
-  return rows.map((r) => r.id);
-}

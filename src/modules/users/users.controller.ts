@@ -2,7 +2,7 @@ import { Response, NextFunction } from 'express';
 import { AuthRequest } from '../../middlewares/verifyJWT';
 import { BadRequestError } from '../../utils/errors';
 import * as userService from './users.service';
-import { userIdSchema, searchQuerySchema } from './users.validator';
+import { userIdSchema } from './users.validator';
 
 export async function getMe(req: AuthRequest, res: Response, next: NextFunction) {
   try {
@@ -26,16 +26,6 @@ export async function getUserById(req: AuthRequest, res: Response, next: NextFun
   try {
     const { id } = userIdSchema.parse(req.params);
     const result = await userService.getUserById(id);
-    res.status(200).json({ success: true, data: result });
-  } catch (error) {
-    next(error);
-  }
-}
-
-export async function searchUsers(req: AuthRequest, res: Response, next: NextFunction) {
-  try {
-    const { q } = searchQuerySchema.parse(req.query);
-    const result = await userService.searchUsers(req.userId!, q);
     res.status(200).json({ success: true, data: result });
   } catch (error) {
     next(error);

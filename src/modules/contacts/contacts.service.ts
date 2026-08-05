@@ -95,7 +95,3 @@ export async function getRelationship(myId: string, targetUserId: string) {
   if (theyHaveMe) return 'added_you';
   return 'none';
 }
-
-export async function getContactIds(userId: string) {
-  return repository.findContactIds(userId);
-}

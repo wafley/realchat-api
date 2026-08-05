@@ -13,10 +13,6 @@ export const userIdSchema = z.object({
   id: z.string().uuid(),
 });
 
-export const searchQuerySchema = z.object({
-  q: z.string().trim().min(1).max(50),
-});
-
 export const changePasswordSchema = z
   .object({
     oldPassword: z.string().min(1),
