@@ -6,13 +6,13 @@ import * as controller from './contacts.controller';
 
 const router = Router();
 
-router.post('/bulk', verifyJWT, validate(validator.bulkContactsSchema), controller.addContactsBulk);
 router.post(
-  '/:userId',
+  '/by-username',
   verifyJWT,
-  validate(validator.userIdParamSchema, 'params'),
-  controller.addContact,
+  validate(validator.addContactByUsernameSchema),
+  controller.addContactByUsername,
 );
+router.post('/bulk', verifyJWT, validate(validator.bulkContactsSchema), controller.addContactsBulk);
 router.delete(
   '/:userId',
   verifyJWT,

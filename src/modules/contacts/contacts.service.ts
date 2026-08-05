@@ -1,16 +1,11 @@
 import * as repository from './contacts.repository';
-import { findUserById } from '../auth/auth.repository';
-import { NotFoundError } from '../../utils/errors';
+import { findUserById, findUserByUsername } from '../auth/auth.repository';
+import { NotFoundError, ConflictError, BadRequestError } from '../../utils/errors';
 import { getIO } from '../../socket/index';
 import { createAndEmit } from '../notifications/notifications.service';
 
-export async function addContact(myId: string, targetUserId: string) {
-  if (myId === targetUserId) return null;
-
-  const target = await findUserById(targetUserId);
-  if (!target) throw new NotFoundError('User not found');
-
-  const contact = await repository.addContact(myId, targetUserId);
+async function insertContactAndNotify(myId: string, targetUserId: string, customName?: string) {
+  const contact = await repository.addContact(myId, targetUserId, customName);
 
   const me = await findUserById(myId);
 
@@ -34,6 +29,17 @@ export async function addContact(myId: string, targetUserId: string) {
   });
 
   return contact;
+}
+
+export async function addContactByUsername(myId: string, username: string, customName?: string) {
+  const target = await findUserByUsername(username);
+  if (!target) throw new NotFoundError('User not found');
+  if (target.id === myId) throw new BadRequestError('Cannot add yourself');
+
+  const existing = await repository.findContact(myId, target.id);
+  if (existing) throw new ConflictError('User is already your contact');
+
+  return insertContactAndNotify(myId, target.id, customName);
 }
 
 export async function removeContact(myId: string, targetUserId: string) {

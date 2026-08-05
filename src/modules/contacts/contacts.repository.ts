@@ -6,16 +6,17 @@ export const contactColumns = {
   id: contacts.id,
   userId: contacts.userId,
   contactId: contacts.contactId,
+  customName: contacts.customName,
   createdAt: contacts.createdAt,
 };
 
-export async function addContact(userId: string, contactId: string) {
+export async function addContact(userId: string, contactId: string, customName?: string) {
   const existing = await findContact(userId, contactId);
   if (existing) return existing;
 
   const [contact] = await db
     .insert(contacts)
-    .values({ userId, contactId })
+    .values({ userId, contactId, customName })
     .returning(contactColumns);
   return contact;
 }

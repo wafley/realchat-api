@@ -11,3 +11,10 @@ export const sortQuerySchema = z.object({
 export const bulkContactsSchema = z.object({
   userIds: z.array(z.string().uuid()).min(1).max(100),
 });
+
+export const addContactByUsernameSchema = z
+  .object({
+    username: z.string().trim().min(3).max(30),
+    customName: z.string().trim().min(1).max(50).optional(),
+  })
+  .strict();

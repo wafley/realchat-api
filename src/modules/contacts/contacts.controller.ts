@@ -2,10 +2,14 @@ import { Response, NextFunction } from 'express';
 import { AuthRequest } from '../../middlewares/verifyJWT';
 import * as contactService from './contacts.service';
 
-export async function addContact(req: AuthRequest, res: Response, next: NextFunction) {
+export async function addContactByUsername(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    await contactService.addContact(req.userId!, req.params.userId as string);
-    res.status(200).json({ success: true, message: 'Contact added' });
+    const result = await contactService.addContactByUsername(
+      req.userId!,
+      req.body.username as string,
+      req.body.customName as string | undefined,
+    );
+    res.status(201).json({ success: true, message: 'Contact added', data: result });
   } catch (error) {
     next(error);
   }
