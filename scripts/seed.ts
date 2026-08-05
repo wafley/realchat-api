@@ -5,7 +5,7 @@ import { conversationMembers } from '../src/db/schema/conversationMembers';
 import { messages } from '../src/db/schema/messages';
 import { messageStatus } from '../src/db/schema/messageStatus';
 import { messageReactions } from '../src/db/schema/messageReactions';
-import { friendRequests } from '../src/db/schema/friendRequests';
+import { contacts } from '../src/db/schema/contacts';
 import { notifications } from '../src/db/schema/notifications';
 import bcrypt from 'bcrypt';
 import { BCRYPT_SALT_ROUNDS } from '../src/config/constants';
@@ -81,35 +81,32 @@ async function seed() {
     { messageId: sysMsg.id, userId: charlie.id, status: 'READ' },
   ]);
 
-  // ── Friend requests ────────────────────────────────────
-  // alice → bob (accepted)
-  const [fr1] = await db
-    .insert(friendRequests)
-    .values({ senderId: alice.id, receiverId: bob.id, status: 'ACCEPTED' })
-    .returning();
+  // ── Contacts ─────────────────────────────────────────
+  // alice → bob (mutual, karena bob juga menyimpan alice)
+  await db.insert(contacts).values([
+    { userId: alice.id, contactId: bob.id },
+    { userId: bob.id, contactId: alice.id },
+  ]);
 
-  // alice → charlie (pending)
-  const [fr2] = await db
-    .insert(friendRequests)
-    .values({ senderId: alice.id, receiverId: charlie.id, status: 'PENDING' })
-    .returning();
+  // alice → charlie (satu arah)
+  await db.insert(contacts).values([{ userId: alice.id, contactId: charlie.id }]);
 
   // ── Notifications ──────────────────────────────────────
   await db.insert(notifications).values([
     {
       userId: bob.id,
-      type: 'friend_request_accepted',
+      type: 'new_contact',
       actorId: alice.id,
-      title: 'Friend Request Accepted',
-      body: 'alice accepted your friend request.',
+      title: 'Kontak Baru',
+      body: 'alice menambahkan Anda sebagai kontak.',
       isRead: true,
     },
     {
       userId: charlie.id,
-      type: 'friend_request_received',
+      type: 'new_contact',
       actorId: alice.id,
-      title: 'Friend Request',
-      body: 'alice sent you a friend request.',
+      title: 'Kontak Baru',
+      body: 'alice menambahkan Anda sebagai kontak.',
       isRead: false,
     },
   ]);
@@ -124,9 +121,9 @@ async function seed() {
   console.log('── Conversations ──');
   console.log(`  Private chat alice-bob   → id: ${privateConv.id}`);
   console.log(`  Group "Squad Developer"  → id: ${group.id}`);
-  console.log('── Friend Requests ──');
-  console.log(`  alice → bob     (ACCEPTED) → id: ${fr1.id}`);
-  console.log(`  alice → charlie (PENDING)  → id: ${fr2.id}`);
+  console.log('── Contacts ──');
+  console.log(`  alice ↔ bob     (mutual)  → id: ${alice.id}`);
+  console.log(`  alice → charlie (1 arah)  → id: ${alice.id}`);
 
   process.exit(0);
 }
