@@ -2,7 +2,7 @@ import * as repository from './users.repository';
 import { findUserById, findUserByUsername, deleteUserRefreshTokens } from '../auth/auth.repository';
 import { comparePassword, hashPassword } from '../../utils/hashPassword';
 import { NotFoundError, ConflictError, BadRequestError } from '../../utils/errors';
-import { getFollowingIds } from '../friends/friends.service';
+import { getContactIds } from '../contacts/contacts.service';
 
 export async function getProfile(userId: string) {
   const user = await findUserById(userId);
@@ -72,8 +72,8 @@ export async function getUserById(targetId: string) {
 
 export async function searchUsers(userId: string, query: string) {
   const results = await repository.searchUsers(query, userId);
-  const followingIds = await getFollowingIds(userId);
-  const followingIdSet = new Set(followingIds);
+  const contactIds = await getContactIds(userId);
+  const contactIdSet = new Set(contactIds);
 
   return results.map((user) => ({
     id: user.id,
@@ -83,7 +83,7 @@ export async function searchUsers(userId: string, query: string) {
     statusText: user.statusText,
     isOnline: user.isOnline,
     lastSeenAt: user.lastSeenAt,
-    isFollowing: followingIdSet.has(user.id),
+    isContact: contactIdSet.has(user.id),
   }));
 }
 
