@@ -68,28 +68,8 @@ export async function addContactsBulk(myId: string, targetUserIds: string[]) {
   return repository.addContactsBulk(myId, uniqueIds);
 }
 
-async function attachUserDetails(rows: { userId: string; contactId: string }[]) {
-  const result = [];
-  for (const row of rows) {
-    const user = await findUserById(row.contactId);
-    if (user) {
-      result.push({
-        id: user.id,
-        username: user.username,
-        fullName: user.fullName,
-        avatarUrl: user.avatarUrl,
-        bio: user.bio,
-        isOnline: user.isOnline,
-        lastSeenAt: user.lastSeenAt,
-      });
-    }
-  }
-  return result;
-}
-
-export async function getMyContacts(userId: string, sort?: string) {
-  const rows = await repository.findContacts(userId, sort);
-  return attachUserDetails(rows);
+export async function getMyContacts(userId: string, sort?: string, search?: string) {
+  return repository.findContacts(userId, sort, search);
 }
 
 export async function checkContact(myId: string, targetUserId: string) {

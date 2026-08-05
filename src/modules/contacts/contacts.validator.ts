@@ -4,7 +4,8 @@ export const userIdParamSchema = z.object({
   userId: z.string().uuid(),
 });
 
-export const sortQuerySchema = z.object({
+export const contactListQuerySchema = z.object({
+  search: z.string().trim().optional(),
   sort: z.enum(['recent', 'alphabetical']).optional(),
 });
 

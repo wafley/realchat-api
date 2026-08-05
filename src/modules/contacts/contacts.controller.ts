@@ -49,7 +49,8 @@ export async function addContactsBulk(req: AuthRequest, res: Response, next: Nex
 export async function getMyContacts(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const sort = req.query.sort as string | undefined;
-    const result = await contactService.getMyContacts(req.userId!, sort);
+    const search = req.query.search as string | undefined;
+    const result = await contactService.getMyContacts(req.userId!, sort, search);
     res.status(200).json({ success: true, data: result });
   } catch (error) {
     next(error);

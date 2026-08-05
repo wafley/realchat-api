@@ -26,7 +26,7 @@ router.patch(
   validate(validator.updateCustomNameSchema),
   controller.updateCustomName,
 );
-router.get('/', verifyJWT, controller.getMyContacts);
+router.get('/', verifyJWT, validate(validator.contactListQuerySchema), controller.getMyContacts);
 router.get(
   '/:userId',
   verifyJWT,

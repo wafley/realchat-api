@@ -1,6 +1,7 @@
 import db from '../../db/index';
 import { contacts } from '../../db/schema/contacts';
-import { eq, and, desc, inArray } from 'drizzle-orm';
+import { users } from '../../db/schema/users';
+import { eq, and, desc, asc, inArray, ilike, or } from 'drizzle-orm';
 
 export const contactColumns = {
   id: contacts.id,
@@ -66,11 +67,38 @@ export async function findContact(userId: string, contactId: string) {
   return contact || null;
 }
 
-export async function findContacts(userId: string, sort?: string) {
-  const query = db.select(contactColumns).from(contacts).where(eq(contacts.userId, userId));
+export async function findContacts(userId: string, sort?: string, search?: string) {
+  const conditions = [eq(contacts.userId, userId)];
+
+  if (search) {
+    const pattern = `%${search}%`;
+    conditions.push(
+      or(
+        ilike(users.username, pattern),
+        ilike(users.fullName, pattern),
+        ilike(contacts.customName, pattern),
+      )!,
+    );
+  }
+
+  const query = db
+    .select({
+      id: users.id,
+      username: users.username,
+      fullName: users.fullName,
+      avatarUrl: users.avatarUrl,
+      bio: users.bio,
+      isOnline: users.isOnline,
+      lastSeenAt: users.lastSeenAt,
+      customName: contacts.customName,
+      createdAt: contacts.createdAt,
+    })
+    .from(contacts)
+    .innerJoin(users, eq(users.id, contacts.contactId))
+    .where(and(...conditions));
 
   if (sort === 'alphabetical') {
-    return query;
+    return query.orderBy(asc(users.username));
   }
   return query.orderBy(desc(contacts.createdAt));
 }
