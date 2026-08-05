@@ -50,6 +50,13 @@
       "when": 1785600000000,
       "tag": "0006_purple_phoenix",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1785893394619,
+      "tag": "0007_unusual_colonel_america",
+      "breakpoints": true
     }
   ]
 }
