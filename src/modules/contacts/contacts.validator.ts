@@ -6,7 +6,10 @@ export const userIdParamSchema = z.object({
 
 export const contactListQuerySchema = z.object({
   search: z.string().trim().optional(),
-  sort: z.enum(['recent', 'alphabetical']).optional(),
+  sort: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.enum(['recent', 'alphabetical']).optional(),
+  ),
 });
 
 export const bulkContactsSchema = z.object({
