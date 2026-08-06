@@ -67,15 +67,6 @@ export async function findPrivateConversation(userId1: string, userId2: string) 
   return result || null;
 }
 
-export async function findConversationsByUserId(userId: string) {
-  return db
-    .select(conversationColumns)
-    .from(conversations)
-    .innerJoin(conversationMembers, eq(conversationMembers.conversationId, conversations.id))
-    .where(eq(conversationMembers.userId, userId))
-    .orderBy(desc(conversations.createdAt));
-}
-
 export async function findConversationList(
   userId: string,
   options: { search?: string; cursor?: string; limit: number },
@@ -112,6 +103,7 @@ export async function findConversationList(
       type: messages.type,
       senderId: messages.senderId,
       createdAt: messages.createdAt,
+      isDeleted: messages.isDeleted,
       senderUsername: users.username,
       senderFullName: users.fullName,
       senderAvatarUrl: users.avatarUrl,
@@ -134,7 +126,8 @@ export async function findConversationList(
 
   const conditions: (SQL | undefined)[] = [];
   if (search) {
-    const pattern = `%${search}%`;
+    const escaped = search.replace(/[\\%_]/g, '\\$&');
+    const pattern = `%${escaped}%`;
     conditions.push(
       or(
         ilike(conversations.name, pattern),
@@ -164,6 +157,7 @@ export async function findConversationList(
       lastMessageType: lastMessage.type,
       lastMessageSenderId: lastMessage.senderId,
       lastMessageCreatedAt: lastMessage.createdAt,
+      lastMessageIsDeleted: lastMessage.isDeleted,
       senderUsername: lastMessage.senderUsername,
       senderFullName: lastMessage.senderFullName,
       senderAvatarUrl: lastMessage.senderAvatarUrl,
@@ -234,22 +228,6 @@ export async function removeMember(conversationId: string, userId: string) {
         eq(conversationMembers.userId, userId),
       ),
     );
-}
-
-export async function getLastMessage(conversationId: string) {
-  const [result] = await db
-    .select({
-      id: messages.id,
-      content: messages.content,
-      type: messages.type,
-      senderId: messages.senderId,
-      createdAt: messages.createdAt,
-    })
-    .from(messages)
-    .where(eq(messages.conversationId, conversationId))
-    .orderBy(desc(messages.createdAt))
-    .limit(1);
-  return result || null;
 }
 
 export const messageColumns = {

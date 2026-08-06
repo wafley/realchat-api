@@ -93,6 +93,7 @@ export async function getConversations(
             avatarUrl: row.senderAvatarUrl,
           },
           createdAt: row.lastMessageCreatedAt,
+          isDeleted: row.lastMessageIsDeleted,
         }
       : null;
 
