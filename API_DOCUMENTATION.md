@@ -110,6 +110,7 @@ Ulang request yang gagal
 > - `cursor?` — ISO timestamp dari `nextCursor` halaman sebelumnya (keyset pagination).
 > - `limit?` — 1–50, default 20.
 > - Diurutkan berdasarkan aktivitas terakhir (last message → dibuatnya conversation), terbaru dulu.
+> - `search` mencocokkan nama conversation, `username`/`full name` peer, `customName`, atau isi last message. Karakter wildcard (`%`, `_`) dianggap literal.
 > - `displayName`: **PRIVATE** = `customName` → full name peer → username peer → `'Unknown'`; **GROUP** = `name`.
 > - `lastMessage.sender` hanya untuk **PRIVATE**; `isOnline`/`lastSeenAt` hanya untuk **PRIVATE**; `memberCount` hanya untuk **GROUP**; `myRole`/`mutedUntil`/`clearedAt` dari membership milikku.
 > - `unreadCount` belum ada (menyusul di fitur read receipts).
@@ -140,7 +141,8 @@ Ulang request yang gagal
 >         "type": "TEXT",
 >         "senderId": "uuid",
 >         "sender": { "username": "bob", "fullName": "Bob D", "avatarUrl": null },
->         "createdAt": "2026-08-06T09:46:29.381Z"
+>         "createdAt": "2026-08-06T09:46:29.381Z",
+>         "isDeleted": false
 >       }
 >     },
 >     {
