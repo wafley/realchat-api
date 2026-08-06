@@ -1,7 +1,11 @@
 import { Response, NextFunction } from 'express';
 import { AuthRequest } from '../../middlewares/verifyJWT';
 import * as conversationService from './conversations.service';
-import { messageIdSchema, paginationSchema } from './conversations.validator';
+import {
+  conversationListQuerySchema,
+  messageIdSchema,
+  paginationSchema,
+} from './conversations.validator';
 
 export async function createConversation(req: AuthRequest, res: Response, next: NextFunction) {
   try {
@@ -14,7 +18,12 @@ export async function createConversation(req: AuthRequest, res: Response, next: 
 
 export async function getConversations(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const result = await conversationService.getConversations(req.userId!);
+    const { search, cursor, limit } = conversationListQuerySchema.parse(req.query);
+    const result = await conversationService.getConversations(req.userId!, {
+      search,
+      cursor,
+      limit,
+    });
     res.status(200).json({ success: true, data: result });
   } catch (error) {
     next(error);

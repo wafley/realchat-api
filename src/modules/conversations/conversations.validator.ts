@@ -27,6 +27,12 @@ export const paginationSchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).optional().default(50),
 });
 
+export const conversationListQuerySchema = z.object({
+  search: z.string().trim().optional(),
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(50).optional().default(20),
+});
+
 export const createConversationSchema = z.discriminatedUnion('type', [
   z
     .object({

@@ -62,16 +62,66 @@ export async function createConversation(
   return conversation;
 }
 
-export async function getConversations(userId: string) {
-  const list = await repository.findConversationsByUserId(userId);
+export async function getConversations(
+  userId: string,
+  options: { search?: string; cursor?: string; limit?: number },
+) {
+  const limit = options.limit ?? 20;
+  const rows = await repository.findConversationList(userId, { ...options, limit });
 
-  const result = [];
-  for (const conv of list) {
-    const lastMessage = await repository.getLastMessage(conv.id);
-    result.push({ ...conv, lastMessage });
-  }
+  const hasMore = rows.length > limit;
+  const page = hasMore ? rows.slice(0, limit) : rows;
 
-  return result;
+  const conversations = page.map((row) => {
+    const isPrivate = row.type === 'PRIVATE';
+
+    const displayName = isPrivate
+      ? row.customName || row.peerFullName || row.peerUsername || 'Unknown'
+      : row.name || 'Group';
+
+    const avatar = isPrivate ? (row.peerAvatarUrl ?? null) : row.avatarUrl;
+
+    const lastMessage = row.lastMessageId
+      ? {
+          id: row.lastMessageId,
+          content: row.lastMessageContent,
+          type: row.lastMessageType,
+          senderId: row.lastMessageSenderId,
+          sender: {
+            username: row.senderUsername,
+            fullName: row.senderFullName,
+            avatarUrl: row.senderAvatarUrl,
+          },
+          createdAt: row.lastMessageCreatedAt,
+        }
+      : null;
+
+    return {
+      id: row.id,
+      type: row.type,
+      name: row.name,
+      avatarUrl: row.avatarUrl,
+      description: row.description,
+      createdBy: row.createdBy,
+      createdAt: row.createdAt,
+      displayName,
+      avatar,
+      isOnline: isPrivate ? (row.peerIsOnline ?? false) : null,
+      lastSeenAt: isPrivate ? (row.peerLastSeenAt ?? null) : null,
+      memberCount: isPrivate ? null : (row.memberCount ?? 0),
+      myRole: row.myRole,
+      mutedUntil: row.mutedUntil,
+      clearedAt: row.clearedAt,
+      lastMessage,
+    };
+  });
+
+  const lastItem = page[page.length - 1];
+  const nextCursor = hasMore
+    ? (lastItem.lastMessageCreatedAt ?? lastItem.createdAt).toISOString()
+    : null;
+
+  return { conversations, nextCursor };
 }
 
 export async function getConversationDetail(userId: string, conversationId: string) {
