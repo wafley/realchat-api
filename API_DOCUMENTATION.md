@@ -93,6 +93,7 @@ Ulang request yang gagal
 | GET | `/users/me` | — | 200 — profile |
 | PUT | `/users/me` | `{ username?, fullName?, bio?, statusText? }` | 200 — updated profile |
 | GET | `/users/:id` | `:id` (uuid) | 200 — public profile |
+| GET | `/users/search?q=` | `?q=` (query) | 200 — user list (max 20) |
 | PUT | `/users/me/avatar` | `avatar` (multipart file) | 200 — updated profile |
 | PUT | `/users/me/password` | `{ oldPassword, newPassword }` | 200 — success |
 
@@ -129,32 +130,12 @@ Ulang request yang gagal
 
 | Method | Endpoint | Body/Params | Response |
 |--------|----------|-------------|----------|
-| POST | `/contacts/by-username` | `{ username, customName? }` | 201 — contact added |
 | POST | `/contacts/bulk` | `{ userIds: string[] }` (max 100) | 200 — added contacts |
-| PATCH | `/contacts/:userId` | `{ customName }` | 200 — custom name updated |
+| POST | `/contacts/:userId` | `:userId` (uuid) | 200 — contact added |
 | DELETE | `/contacts/:userId` | `:userId` (uuid) | 200 — contact removed |
-| GET | `/contacts` | `?search=&sort=recent\|alphabetical` | 200 — my contacts |
+| GET | `/contacts` | `?sort=recent\|alphabetical` | 200 — my contacts |
 | GET | `/contacts/:userId` | `:userId` (uuid) | 200 — `{ isContact: boolean }` |
 | GET | `/users/:userId/relationship` | `:userId` (uuid) | 200 — `{ status }` (`mutual` / `added` / `added_you` / `none`) |
-
-> **Konsep ala WhatsApp:** kontak ditambah via **username** (bukan UUID). `search` memfilter daftar kontak milik sendiri (cocok di `username`, `fullName`, atau `customName`). `customName` adalah label pribadi yang hanya terlihat oleh pemilik kontak.
->
-> **Error `POST /contacts/by-username`:** `404 User not found` (username tidak ada), `409 User is already your contact` (duplikat), `400 Cannot add yourself` (menambah diri sendiri).
-
-> **Contoh response `GET /contacts`** (tiap item):
-> ```json
-> {
->   "id": "uuid-target",
->   "username": "bob",
->   "fullName": "Bob D",
->   "avatarUrl": null,
->   "bio": null,
->   "isOnline": false,
->   "lastSeenAt": null,
->   "customName": "Si Bob",
->   "createdAt": "2026-08-05T00:00:00.000Z"
-> }
-> ```
 
 ### Notifications (Bearer required)
 

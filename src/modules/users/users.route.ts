@@ -18,6 +18,7 @@ router.put(
   validate(validator.changePasswordSchema),
   controller.changePassword,
 );
+router.get('/search', verifyJWT, controller.searchUsers);
 router.get(
   '/:userId/relationship',
   verifyJWT,

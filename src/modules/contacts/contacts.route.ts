@@ -6,27 +6,20 @@ import * as controller from './contacts.controller';
 
 const router = Router();
 
-router.post(
-  '/by-username',
-  verifyJWT,
-  validate(validator.addContactByUsernameSchema),
-  controller.addContactByUsername,
-);
 router.post('/bulk', verifyJWT, validate(validator.bulkContactsSchema), controller.addContactsBulk);
+router.post(
+  '/:userId',
+  verifyJWT,
+  validate(validator.userIdParamSchema, 'params'),
+  controller.addContact,
+);
 router.delete(
   '/:userId',
   verifyJWT,
   validate(validator.userIdParamSchema, 'params'),
   controller.removeContact,
 );
-router.patch(
-  '/:userId',
-  verifyJWT,
-  validate(validator.userIdParamSchema, 'params'),
-  validate(validator.updateCustomNameSchema),
-  controller.updateCustomName,
-);
-router.get('/', verifyJWT, validate(validator.contactListQuerySchema), controller.getMyContacts);
+router.get('/', verifyJWT, controller.getMyContacts);
 router.get(
   '/:userId',
   verifyJWT,

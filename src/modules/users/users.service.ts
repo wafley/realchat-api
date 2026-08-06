@@ -2,6 +2,7 @@ import * as repository from './users.repository';
 import { findUserById, findUserByUsername, deleteUserRefreshTokens } from '../auth/auth.repository';
 import { comparePassword, hashPassword } from '../../utils/hashPassword';
 import { NotFoundError, ConflictError, BadRequestError } from '../../utils/errors';
+import { getContactIds } from '../contacts/contacts.service';
 
 export async function getProfile(userId: string) {
   const user = await findUserById(userId);
@@ -67,6 +68,23 @@ export async function getUserById(targetId: string) {
     isOnline: user.isOnline,
     lastSeenAt: user.lastSeenAt,
   };
+}
+
+export async function searchUsers(userId: string, query: string) {
+  const results = await repository.searchUsers(query, userId);
+  const contactIds = await getContactIds(userId);
+  const contactIdSet = new Set(contactIds);
+
+  return results.map((user) => ({
+    id: user.id,
+    username: user.username,
+    fullName: user.fullName,
+    avatarUrl: user.avatarUrl,
+    statusText: user.statusText,
+    isOnline: user.isOnline,
+    lastSeenAt: user.lastSeenAt,
+    isContact: contactIdSet.has(user.id),
+  }));
 }
 
 export async function updateAvatar(userId: string, file: Express.Multer.File) {

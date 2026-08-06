@@ -1,6 +1,6 @@
 import db from '../../db/index';
 import { users } from '../../db/schema/users';
-import { eq } from 'drizzle-orm';
+import { and, eq, ilike, ne, or } from 'drizzle-orm';
 
 export const publicUserColumns = {
   id: users.id,
@@ -33,6 +33,21 @@ export async function updateUser(
     .where(eq(users.id, userId))
     .returning(publicUserColumns);
   return user || null;
+}
+
+export async function searchUsers(query: string, excludeUserId?: string) {
+  const pattern = `%${query}%`;
+  return db
+    .select(publicUserColumns)
+    .from(users)
+    .where(
+      and(
+        eq(users.isVerified, true),
+        excludeUserId ? ne(users.id, excludeUserId) : undefined,
+        or(ilike(users.username, pattern), ilike(users.email, pattern)),
+      ),
+    )
+    .limit(20);
 }
 
 export async function updateAvatar(userId: string, avatarUrl: string) {

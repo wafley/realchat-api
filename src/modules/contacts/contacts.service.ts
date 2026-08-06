@@ -1,11 +1,16 @@
 import * as repository from './contacts.repository';
-import { findUserById, findUserByUsername } from '../auth/auth.repository';
-import { NotFoundError, ConflictError, BadRequestError } from '../../utils/errors';
+import { findUserById } from '../auth/auth.repository';
+import { NotFoundError } from '../../utils/errors';
 import { getIO } from '../../socket/index';
 import { createAndEmit } from '../notifications/notifications.service';
 
-async function insertContactAndNotify(myId: string, targetUserId: string, customName?: string) {
-  const contact = await repository.addContact(myId, targetUserId, customName);
+export async function addContact(myId: string, targetUserId: string) {
+  if (myId === targetUserId) return null;
+
+  const target = await findUserById(targetUserId);
+  if (!target) throw new NotFoundError('User not found');
+
+  const contact = await repository.addContact(myId, targetUserId);
 
   const me = await findUserById(myId);
 
@@ -31,34 +36,12 @@ async function insertContactAndNotify(myId: string, targetUserId: string, custom
   return contact;
 }
 
-export async function addContactByUsername(myId: string, username: string, customName?: string) {
-  const target = await findUserByUsername(username);
-  if (!target) throw new NotFoundError('User not found');
-  if (target.id === myId) throw new BadRequestError('Cannot add yourself');
-
-  const existing = await repository.findContact(myId, target.id);
-  if (existing) throw new ConflictError('User is already your contact');
-
-  return insertContactAndNotify(myId, target.id, customName);
-}
-
 export async function removeContact(myId: string, targetUserId: string) {
   if (myId === targetUserId) return;
 
   await repository.removeContact(myId, targetUserId);
 
   getIO().to(`user:${targetUserId}`).emit('contact:remove', { userId: myId });
-}
-
-export async function updateContactCustomName(
-  myId: string,
-  targetUserId: string,
-  customName: string,
-) {
-  const existing = await repository.findContact(myId, targetUserId);
-  if (!existing) throw new NotFoundError('Contact not found');
-
-  return repository.updateContactCustomName(myId, targetUserId, customName);
 }
 
 export async function addContactsBulk(myId: string, targetUserIds: string[]) {
@@ -68,8 +51,28 @@ export async function addContactsBulk(myId: string, targetUserIds: string[]) {
   return repository.addContactsBulk(myId, uniqueIds);
 }
 
-export async function getMyContacts(userId: string, sort?: string, search?: string) {
-  return repository.findContacts(userId, sort, search);
+async function attachUserDetails(rows: { userId: string; contactId: string }[]) {
+  const result = [];
+  for (const row of rows) {
+    const user = await findUserById(row.contactId);
+    if (user) {
+      result.push({
+        id: user.id,
+        username: user.username,
+        fullName: user.fullName,
+        avatarUrl: user.avatarUrl,
+        bio: user.bio,
+        isOnline: user.isOnline,
+        lastSeenAt: user.lastSeenAt,
+      });
+    }
+  }
+  return result;
+}
+
+export async function getMyContacts(userId: string, sort?: string) {
+  const rows = await repository.findContacts(userId, sort);
+  return attachUserDetails(rows);
 }
 
 export async function checkContact(myId: string, targetUserId: string) {
@@ -91,4 +94,8 @@ export async function getRelationship(myId: string, targetUserId: string) {
   if (iHaveThem) return 'added';
   if (theyHaveMe) return 'added_you';
   return 'none';
+}
+
+export async function getContactIds(userId: string) {
+  return repository.findContactIds(userId);
 }

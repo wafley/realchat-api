@@ -57,13 +57,6 @@
       "when": 1785893394619,
       "tag": "0007_unusual_colonel_america",
       "breakpoints": true
-    },
-    {
-      "idx": 8,
-      "version": "7",
-      "when": 1785903861667,
-      "tag": "0008_medical_nextwave",
-      "breakpoints": true
     }
   ]
 }

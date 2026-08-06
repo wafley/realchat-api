@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, unique, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, timestamp, unique, index } from 'drizzle-orm/pg-core';
 import { users } from './users';
 
 export const contacts = pgTable(
@@ -11,7 +11,6 @@ export const contacts = pgTable(
     contactId: uuid('contact_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    customName: text('custom_name'),
     createdAt: timestamp('created_at').notNull().defaultNow(),
   },
   (table) => ({
