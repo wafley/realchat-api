@@ -1,21 +1,23 @@
 import db from '../../db/index';
 import { contacts } from '../../db/schema/contacts';
-import { eq, and, desc, inArray } from 'drizzle-orm';
+import { users } from '../../db/schema/users';
+import { eq, and, desc, asc, inArray, ilike, or } from 'drizzle-orm';
 
 export const contactColumns = {
   id: contacts.id,
   userId: contacts.userId,
   contactId: contacts.contactId,
+  customName: contacts.customName,
   createdAt: contacts.createdAt,
 };
 
-export async function addContact(userId: string, contactId: string) {
+export async function addContact(userId: string, contactId: string, customName?: string) {
   const existing = await findContact(userId, contactId);
   if (existing) return existing;
 
   const [contact] = await db
     .insert(contacts)
-    .values({ userId, contactId })
+    .values({ userId, contactId, customName })
     .returning(contactColumns);
   return contact;
 }
@@ -43,6 +45,19 @@ export async function removeContact(userId: string, contactId: string) {
     .where(and(eq(contacts.userId, userId), eq(contacts.contactId, contactId)));
 }
 
+export async function updateContactCustomName(
+  userId: string,
+  contactId: string,
+  customName: string,
+) {
+  const [contact] = await db
+    .update(contacts)
+    .set({ customName })
+    .where(and(eq(contacts.userId, userId), eq(contacts.contactId, contactId)))
+    .returning(contactColumns);
+  return contact || null;
+}
+
 export async function findContact(userId: string, contactId: string) {
   const [contact] = await db
     .select(contactColumns)
@@ -52,19 +67,38 @@ export async function findContact(userId: string, contactId: string) {
   return contact || null;
 }
 
-export async function findContacts(userId: string, sort?: string) {
-  const query = db.select(contactColumns).from(contacts).where(eq(contacts.userId, userId));
+export async function findContacts(userId: string, sort?: string, search?: string) {
+  const conditions = [eq(contacts.userId, userId)];
+
+  if (search) {
+    const pattern = `%${search}%`;
+    conditions.push(
+      or(
+        ilike(users.username, pattern),
+        ilike(users.fullName, pattern),
+        ilike(contacts.customName, pattern),
+      )!,
+    );
+  }
+
+  const query = db
+    .select({
+      id: users.id,
+      username: users.username,
+      fullName: users.fullName,
+      avatarUrl: users.avatarUrl,
+      bio: users.bio,
+      isOnline: users.isOnline,
+      lastSeenAt: users.lastSeenAt,
+      customName: contacts.customName,
+      createdAt: contacts.createdAt,
+    })
+    .from(contacts)
+    .innerJoin(users, eq(users.id, contacts.contactId))
+    .where(and(...conditions));
 
   if (sort === 'alphabetical') {
-    return query;
+    return query.orderBy(asc(users.username));
   }
   return query.orderBy(desc(contacts.createdAt));
-}
-
-export async function findContactIds(userId: string) {
-  const rows = await db
-    .select({ id: contacts.contactId })
-    .from(contacts)
-    .where(eq(contacts.userId, userId));
-  return rows.map((r) => r.id);
 }
