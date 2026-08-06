@@ -101,9 +101,72 @@ Ulang request yang gagal
 | Method | Endpoint | Body/Params | Response |
 |--------|----------|-------------|----------|
 | POST | `/conversations` | `{ type, participantId }` or `{ type, name, participantIds }` | 201 — conversation |
-| GET | `/conversations` | — | 200 — list with last message |
+| GET | `/conversations` | `?search=&cursor=&limit=20` | 200 — `{ conversations, nextCursor }` |
 | GET | `/conversations/:id` | `:id` (uuid) | 200 — detail + members |
 | DELETE | `/conversations/:id` | `:id` (uuid) | 200 — left conversation |
+
+> **`GET /conversations` — chat list:**
+> - `search?` — filter by `conversations.name`, peer `username`/`fullName`, `customName`, atau isi last message.
+> - `cursor?` — ISO timestamp dari `nextCursor` halaman sebelumnya (keyset pagination).
+> - `limit?` — 1–50, default 20.
+> - Diurutkan berdasarkan aktivitas terakhir (last message → dibuatnya conversation), terbaru dulu.
+> - `search` mencocokkan nama conversation, `username`/`full name` peer, `customName`, atau isi last message. Karakter wildcard (`%`, `_`) dianggap literal.
+> - `displayName`: **PRIVATE** = `customName` → full name peer → username peer → `'Unknown'`; **GROUP** = `name`.
+> - `lastMessage.sender` hanya untuk **PRIVATE**; `isOnline`/`lastSeenAt` hanya untuk **PRIVATE**; `memberCount` hanya untuk **GROUP**; `myRole`/`mutedUntil`/`clearedAt` dari membership milikku.
+> - `unreadCount` belum ada (menyusul di fitur read receipts).
+>
+> **Contoh response `GET /conversations`:**
+> ```json
+> {
+>   "conversations": [
+>     {
+>       "id": "uuid",
+>       "type": "PRIVATE",
+>       "name": null,
+>       "avatarUrl": null,
+>       "description": null,
+>       "createdBy": "uuid",
+>       "createdAt": "2026-08-06T09:46:23.324Z",
+>       "displayName": "bob",
+>       "avatar": null,
+>       "isOnline": false,
+>       "lastSeenAt": "2026-08-05T09:00:37.211Z",
+>       "memberCount": null,
+>       "myRole": "MEMBER",
+>       "mutedUntil": null,
+>       "clearedAt": null,
+>       "lastMessage": {
+>         "id": "uuid",
+>         "content": "halo!",
+>         "type": "TEXT",
+>         "senderId": "uuid",
+>         "sender": { "username": "bob", "fullName": "Bob D", "avatarUrl": null },
+>         "createdAt": "2026-08-06T09:46:29.381Z",
+>         "isDeleted": false
+>       }
+>     },
+>     {
+>       "id": "uuid",
+>       "type": "GROUP",
+>       "name": "Squad",
+>       "avatarUrl": null,
+>       "description": null,
+>       "createdBy": "uuid",
+>       "createdAt": "2026-08-06T09:48:05.031Z",
+>       "displayName": "Squad",
+>       "avatar": null,
+>       "isOnline": null,
+>       "lastSeenAt": null,
+>       "memberCount": 3,
+>       "myRole": "ADMIN",
+>       "mutedUntil": null,
+>       "clearedAt": null,
+>       "lastMessage": null
+>     }
+>   ],
+>   "nextCursor": null
+> }
+> ```
 
 ### Messages (Bearer required)
 

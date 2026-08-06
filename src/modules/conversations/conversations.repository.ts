@@ -2,8 +2,10 @@ import db from '../../db/index';
 import { conversations } from '../../db/schema/conversations';
 import { conversationMembers } from '../../db/schema/conversationMembers';
 import { messages } from '../../db/schema/messages';
-import { eq, and, desc, lt } from 'drizzle-orm';
+import { users } from '../../db/schema/users';
+import { contacts } from '../../db/schema/contacts';
 import { messageStatus } from '../../db/schema/messageStatus';
+import { eq, and, desc, lt, ne, or, count, ilike, sql, aliasedTable, type SQL } from 'drizzle-orm';
 
 export const conversationColumns = {
   id: conversations.id,
@@ -65,13 +67,126 @@ export async function findPrivateConversation(userId1: string, userId2: string) 
   return result || null;
 }
 
-export async function findConversationsByUserId(userId: string) {
-  return db
-    .select(conversationColumns)
-    .from(conversations)
-    .innerJoin(conversationMembers, eq(conversationMembers.conversationId, conversations.id))
+export async function findConversationList(
+  userId: string,
+  options: { search?: string; cursor?: string; limit: number },
+) {
+  const { search, cursor, limit } = options;
+
+  const mine = db
+    .select({
+      conversationId: conversationMembers.conversationId,
+      role: conversationMembers.role,
+      mutedUntil: conversationMembers.mutedUntil,
+      clearedAt: conversationMembers.clearedAt,
+    })
+    .from(conversationMembers)
     .where(eq(conversationMembers.userId, userId))
-    .orderBy(desc(conversations.createdAt));
+    .as('mine');
+
+  const peer = db
+    .select({
+      conversationId: conversationMembers.conversationId,
+      userId: conversationMembers.userId,
+    })
+    .from(conversationMembers)
+    .where(ne(conversationMembers.userId, userId))
+    .as('peer');
+
+  const peerUser = aliasedTable(users, 'peer_user');
+
+  const lastMessage = db
+    .selectDistinctOn([messages.conversationId], {
+      conversationId: messages.conversationId,
+      id: messages.id,
+      content: messages.content,
+      type: messages.type,
+      senderId: messages.senderId,
+      createdAt: messages.createdAt,
+      isDeleted: messages.isDeleted,
+      senderUsername: users.username,
+      senderFullName: users.fullName,
+      senderAvatarUrl: users.avatarUrl,
+    })
+    .from(messages)
+    .innerJoin(users, eq(users.id, messages.senderId))
+    .orderBy(messages.conversationId, desc(messages.createdAt))
+    .as('last_message');
+
+  const memberCounts = db
+    .select({
+      conversationId: conversationMembers.conversationId,
+      value: count(conversationMembers.id).as('member_count'),
+    })
+    .from(conversationMembers)
+    .groupBy(conversationMembers.conversationId)
+    .as('member_counts');
+
+  const sortKey = sql`COALESCE(${lastMessage.createdAt}, ${conversations.createdAt})`;
+
+  const conditions: (SQL | undefined)[] = [];
+  if (search) {
+    const escaped = search.replace(/[\\%_]/g, '\\$&');
+    const pattern = `%${escaped}%`;
+    conditions.push(
+      or(
+        ilike(conversations.name, pattern),
+        ilike(peerUser.username, pattern),
+        ilike(peerUser.fullName, pattern),
+        ilike(contacts.customName, pattern),
+        ilike(lastMessage.content, pattern),
+      )!,
+    );
+  }
+  if (cursor) conditions.push(lt(sortKey, cursor));
+
+  return db
+    .select({
+      id: conversations.id,
+      type: conversations.type,
+      name: conversations.name,
+      avatarUrl: conversations.avatarUrl,
+      description: conversations.description,
+      createdBy: conversations.createdBy,
+      createdAt: conversations.createdAt,
+      myRole: mine.role,
+      mutedUntil: mine.mutedUntil,
+      clearedAt: mine.clearedAt,
+      lastMessageId: lastMessage.id,
+      lastMessageContent: lastMessage.content,
+      lastMessageType: lastMessage.type,
+      lastMessageSenderId: lastMessage.senderId,
+      lastMessageCreatedAt: lastMessage.createdAt,
+      lastMessageIsDeleted: lastMessage.isDeleted,
+      senderUsername: lastMessage.senderUsername,
+      senderFullName: lastMessage.senderFullName,
+      senderAvatarUrl: lastMessage.senderAvatarUrl,
+      peerId: peerUser.id,
+      peerUsername: peerUser.username,
+      peerFullName: peerUser.fullName,
+      peerAvatarUrl: peerUser.avatarUrl,
+      peerIsOnline: peerUser.isOnline,
+      peerLastSeenAt: peerUser.lastSeenAt,
+      customName: contacts.customName,
+      memberCount: memberCounts.value,
+    })
+    .from(conversations)
+    .innerJoin(mine, eq(mine.conversationId, conversations.id))
+    .leftJoin(lastMessage, eq(lastMessage.conversationId, conversations.id))
+    .leftJoin(
+      peer,
+      and(
+        eq(peer.conversationId, conversations.id),
+        ne(peer.userId, userId),
+        eq(conversations.type, 'PRIVATE'),
+      ),
+    )
+    .leftJoin(peerUser, eq(peerUser.id, peer.userId))
+    .leftJoin(contacts, and(eq(contacts.userId, userId), eq(contacts.contactId, peer.userId)))
+    .leftJoin(memberCounts, eq(memberCounts.conversationId, conversations.id))
+    .where(and(...conditions))
+    .orderBy(sql`${sortKey} DESC NULLS LAST`, desc(conversations.id))
+    .limit(limit + 1);
 }
 
 export async function findConversationById(id: string) {
@@ -113,22 +228,6 @@ export async function removeMember(conversationId: string, userId: string) {
         eq(conversationMembers.userId, userId),
       ),
     );
-}
-
-export async function getLastMessage(conversationId: string) {
-  const [result] = await db
-    .select({
-      id: messages.id,
-      content: messages.content,
-      type: messages.type,
-      senderId: messages.senderId,
-      createdAt: messages.createdAt,
-    })
-    .from(messages)
-    .where(eq(messages.conversationId, conversationId))
-    .orderBy(desc(messages.createdAt))
-    .limit(1);
-  return result || null;
 }
 
 export const messageColumns = {
