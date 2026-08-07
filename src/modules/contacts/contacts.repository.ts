@@ -71,7 +71,8 @@ export async function findContacts(userId: string, sort?: string, search?: strin
   const conditions = [eq(contacts.userId, userId)];
 
   if (search) {
-    const pattern = `%${search}%`;
+    const escaped = search.replace(/[\\%_]/g, '\\$&');
+    const pattern = `%${escaped}%`;
     conditions.push(
       or(
         ilike(users.username, pattern),
