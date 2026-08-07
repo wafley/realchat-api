@@ -4,7 +4,6 @@ import { conversationMembers } from '../../db/schema/conversationMembers';
 import { messages } from '../../db/schema/messages';
 import { users } from '../../db/schema/users';
 import { contacts } from '../../db/schema/contacts';
-import { messageStatus } from '../../db/schema/messageStatus';
 import { eq, and, desc, lt, ne, or, count, ilike, sql, aliasedTable, type SQL } from 'drizzle-orm';
 
 export const conversationColumns = {
@@ -244,16 +243,6 @@ export const messageColumns = {
   createdAt: messages.createdAt,
 };
 
-export async function createMessage(data: {
-  conversationId: string;
-  senderId: string;
-  content: string;
-  replyToId?: string;
-}) {
-  const [message] = await db.insert(messages).values(data).returning(messageColumns);
-  return message;
-}
-
 export async function findMessagesByConversationId(
   conversationId: string,
   cursor?: string,
@@ -295,9 +284,4 @@ export async function softDeleteMessage(id: string) {
     .where(eq(messages.id, id))
     .returning(messageColumns);
   return message || null;
-}
-
-export async function createMessageStatus(messageId: string, userId: string, status: string) {
-  const [result] = await db.insert(messageStatus).values({ messageId, userId, status }).returning();
-  return result;
 }

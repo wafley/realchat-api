@@ -9,13 +9,6 @@ export const messageIdSchema = z.object({
   messageId: z.string().uuid(),
 });
 
-export const sendMessageSchema = z
-  .object({
-    content: z.string().trim().min(1).max(5000),
-    replyToId: z.string().uuid().optional(),
-  })
-  .strict();
-
 export const editMessageSchema = z
   .object({
     content: z.string().trim().min(1).max(5000),
