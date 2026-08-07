@@ -47,39 +47,47 @@ export function initializeSocket(server: HttpServer) {
     const userId = (socket as Socket & { userId: string }).userId;
     console.log(`User ${userId} connected (socket: ${socket.id})`);
 
-    await db.update(users).set({ isOnline: true }).where(eq(users.id, userId));
-    socket.join(`user:${userId}`);
+    try {
+      await db.update(users).set({ isOnline: true }).where(eq(users.id, userId));
+      socket.join(`user:${userId}`);
 
-    const memberships = await db
-      .select({ conversationId: conversationMembers.conversationId })
-      .from(conversationMembers)
-      .where(eq(conversationMembers.userId, userId));
-    for (const membership of memberships) {
-      socket.join(`conversation:${membership.conversationId}`);
+      const memberships = await db
+        .select({ conversationId: conversationMembers.conversationId })
+        .from(conversationMembers)
+        .where(eq(conversationMembers.userId, userId));
+      for (const membership of memberships) {
+        socket.join(`conversation:${membership.conversationId}`);
+      }
+
+      const [
+        { setupPresenceHandlers },
+        { setupMessageHandlers },
+        { setupTypingHandlers },
+        { setupGroupHandlers },
+      ] = await Promise.all([
+        import('./handlers/presence.handler'),
+        import('./handlers/message.handler'),
+        import('./handlers/typing.handler'),
+        import('./handlers/group.handler'),
+      ]);
+      await setupPresenceHandlers(io, socket);
+      setupMessageHandlers(io, socket);
+      setupTypingHandlers(io, socket);
+      setupGroupHandlers(socket);
+    } catch (err) {
+      console.error(`Failed to set up socket for user ${userId}:`, err);
     }
-
-    const [
-      { setupPresenceHandlers },
-      { setupMessageHandlers },
-      { setupTypingHandlers },
-      { setupGroupHandlers },
-    ] = await Promise.all([
-      import('./handlers/presence.handler'),
-      import('./handlers/message.handler'),
-      import('./handlers/typing.handler'),
-      import('./handlers/group.handler'),
-    ]);
-    await setupPresenceHandlers(io, socket);
-    setupMessageHandlers(io, socket);
-    setupTypingHandlers(io, socket);
-    setupGroupHandlers(socket);
 
     socket.on('disconnect', async () => {
       console.log(`User ${userId} disconnected (socket: ${socket.id})`);
-      await db
-        .update(users)
-        .set({ isOnline: false, lastSeenAt: new Date() })
-        .where(eq(users.id, userId));
+      try {
+        await db
+          .update(users)
+          .set({ isOnline: false, lastSeenAt: new Date() })
+          .where(eq(users.id, userId));
+      } catch (err) {
+        console.error(`Failed to mark user ${userId} offline:`, err);
+      }
     });
   });
 
