@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { env } from '../config/env';
 import db from '../db/index';
 import { users } from '../db/schema/users';
+import { conversationMembers } from '../db/schema/conversationMembers';
 import { eq } from 'drizzle-orm';
 
 let io: Server;
@@ -48,6 +49,14 @@ export function initializeSocket(server: HttpServer) {
 
     await db.update(users).set({ isOnline: true }).where(eq(users.id, userId));
     socket.join(`user:${userId}`);
+
+    const memberships = await db
+      .select({ conversationId: conversationMembers.conversationId })
+      .from(conversationMembers)
+      .where(eq(conversationMembers.userId, userId));
+    for (const membership of memberships) {
+      socket.join(`conversation:${membership.conversationId}`);
+    }
 
     const [
       { setupPresenceHandlers },
