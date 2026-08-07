@@ -3,6 +3,17 @@ import app from './app';
 import { env } from './config/env';
 import { initializeSocket } from './socket/index';
 
+const logError = (label: string, err: unknown) => console.error(`[${label}]`, err);
+
+process.on('unhandledRejection', (reason) => {
+  logError('Unhandled promise rejection', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  logError('Uncaught exception', err);
+  if (env.nodeEnv === 'production') process.exit(1);
+});
+
 const server = http.createServer(app);
 initializeSocket(server);
 
