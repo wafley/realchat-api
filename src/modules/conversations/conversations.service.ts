@@ -1,6 +1,7 @@
 import * as repository from './conversations.repository';
 import { findUserById } from '../auth/auth.repository';
 import { NotFoundError, BadRequestError, ForbiddenError } from '../../utils/errors';
+import { getIO } from '../../socket/index';
 
 export async function createConversation(
   userId: string,
@@ -175,6 +176,9 @@ export async function editMessage(userId: string, messageId: string, content: st
   if (message.senderId !== userId) throw new ForbiddenError('You can only edit your own messages');
 
   const updated = await repository.updateMessageContent(messageId, content);
+
+  getIO().to(`conversation:${message.conversationId}`).emit('message:edited', updated);
+
   return updated;
 }
 
