@@ -173,7 +173,6 @@ Ulang request yang gagal
 | Method | Endpoint | Body/Params | Response |
 |--------|----------|-------------|----------|
 | GET | `/conversations/:id/messages` | `?cursor=&limit=50` | 200 — paginated messages |
-| POST | `/conversations/:id/messages` | `{ content, replyToId? }` | 201 — message |
 | PUT | `/conversations/:id/messages/:messageId` | `{ content }` | 200 — edited message |
 | DELETE | `/conversations/:id/messages/:messageId` | — | 200 — deleted |
 

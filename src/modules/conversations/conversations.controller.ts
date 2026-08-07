@@ -51,19 +51,6 @@ export async function leaveConversation(req: AuthRequest, res: Response, next: N
   }
 }
 
-export async function sendMessage(req: AuthRequest, res: Response, next: NextFunction) {
-  try {
-    const result = await conversationService.sendMessage(
-      req.userId!,
-      req.params.id as string,
-      req.body,
-    );
-    res.status(201).json({ success: true, message: 'Message sent', data: result });
-  } catch (error) {
-    next(error);
-  }
-}
-
 export async function getMessages(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const { cursor, limit } = paginationSchema.parse(req.query);
