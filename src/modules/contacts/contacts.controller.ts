@@ -1,6 +1,7 @@
 import { Response, NextFunction } from 'express';
 import { AuthRequest } from '../../middlewares/verifyJWT';
 import * as contactService from './contacts.service';
+import { contactListQuerySchema } from './contacts.validator';
 
 export async function addContactByUsername(req: AuthRequest, res: Response, next: NextFunction) {
   try {
@@ -48,8 +49,7 @@ export async function addContactsBulk(req: AuthRequest, res: Response, next: Nex
 
 export async function getMyContacts(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const sort = req.query.sort as string | undefined;
-    const search = req.query.search as string | undefined;
+    const { sort, search } = contactListQuerySchema.parse(req.query);
     const result = await contactService.getMyContacts(req.userId!, sort, search);
     res.status(200).json({ success: true, data: result });
   } catch (error) {
