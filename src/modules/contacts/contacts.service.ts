@@ -1,22 +1,30 @@
 import * as repository from './contacts.repository';
-import { findUserById, findUserByUsername } from '../auth/auth.repository';
+import { findUserById, findUserByUsername, findUsersByIds } from '../auth/auth.repository';
 import { NotFoundError, ConflictError, BadRequestError } from '../../utils/errors';
 import { getIO } from '../../socket/index';
 import { createAndEmit } from '../notifications/notifications.service';
 
 async function insertContactAndNotify(myId: string, targetUserId: string, customName?: string) {
   const contact = await repository.addContact(myId, targetUserId, customName);
+  await notifyContactAdded(myId, targetUserId);
+  return contact;
+}
 
-  const me = await findUserById(myId);
+async function notifyContactAdded(
+  myId: string,
+  targetUserId: string,
+  me?: { username: string | null; fullName: string | null; avatarUrl: string | null } | null,
+) {
+  const meResolved = me ?? (await findUserById(myId));
 
   getIO()
     .to(`user:${targetUserId}`)
     .emit('contact:new', {
       contact: {
         id: myId,
-        username: me?.username,
-        fullName: me?.fullName,
-        avatarUrl: me?.avatarUrl,
+        username: meResolved?.username,
+        fullName: meResolved?.fullName,
+        avatarUrl: meResolved?.avatarUrl,
       },
     });
 
@@ -25,10 +33,8 @@ async function insertContactAndNotify(myId: string, targetUserId: string, custom
     type: 'new_contact',
     actorId: myId,
     title: 'Kontak Baru',
-    body: `@${me?.username || 'Someone'} menambahkan Anda sebagai kontak`,
+    body: `@${meResolved?.username || 'Someone'} menambahkan Anda sebagai kontak`,
   });
-
-  return contact;
 }
 
 export async function addContactByUsername(myId: string, username: string, customName?: string) {
@@ -65,7 +71,19 @@ export async function addContactsBulk(myId: string, targetUserIds: string[]) {
   const uniqueIds = [...new Set(targetUserIds)].filter((id) => id !== myId);
   if (uniqueIds.length === 0) return [];
 
-  return repository.addContactsBulk(myId, uniqueIds);
+  const found = await findUsersByIds(uniqueIds);
+  if (found.length !== uniqueIds.length) {
+    throw new NotFoundError('Some users do not exist');
+  }
+
+  const contacts = await repository.addContactsBulk(myId, uniqueIds);
+
+  const me = await findUserById(myId);
+  for (const contact of contacts) {
+    await notifyContactAdded(myId, contact.contactId, me);
+  }
+
+  return contacts;
 }
 
 export async function getMyContacts(userId: string, sort?: string, search?: string) {
