@@ -68,8 +68,13 @@ export async function getMessages(req: AuthRequest, res: Response, next: NextFun
 
 export async function editMessage(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const { messageId } = messageIdSchema.parse(req.params);
-    const result = await conversationService.editMessage(req.userId!, messageId, req.body.content);
+    const { id, messageId } = messageIdSchema.parse(req.params);
+    const result = await conversationService.editMessage(
+      req.userId!,
+      id,
+      messageId,
+      req.body.content,
+    );
     res.status(200).json({ success: true, message: 'Message edited', data: result });
   } catch (error) {
     next(error);
@@ -78,8 +83,8 @@ export async function editMessage(req: AuthRequest, res: Response, next: NextFun
 
 export async function deleteMessage(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const { messageId } = messageIdSchema.parse(req.params);
-    await conversationService.deleteMessage(req.userId!, messageId);
+    const { id, messageId } = messageIdSchema.parse(req.params);
+    await conversationService.deleteMessage(req.userId!, id, messageId);
     res.status(200).json({ success: true, message: 'Message deleted' });
   } catch (error) {
     next(error);

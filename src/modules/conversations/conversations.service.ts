@@ -170,10 +170,17 @@ export async function getMessages(
   };
 }
 
-export async function editMessage(userId: string, messageId: string, content: string) {
+export async function editMessage(
+  userId: string,
+  conversationId: string,
+  messageId: string,
+  content: string,
+) {
   const message = await repository.findMessageById(messageId);
   if (!message) throw new NotFoundError('Message not found');
   if (message.senderId !== userId) throw new ForbiddenError('You can only edit your own messages');
+  if (message.conversationId !== conversationId)
+    throw new ForbiddenError('Message does not belong to this conversation');
 
   const updated = await repository.updateMessageContent(messageId, content);
 
@@ -182,11 +189,13 @@ export async function editMessage(userId: string, messageId: string, content: st
   return updated;
 }
 
-export async function deleteMessage(userId: string, messageId: string) {
+export async function deleteMessage(userId: string, conversationId: string, messageId: string) {
   const message = await repository.findMessageById(messageId);
   if (!message) throw new NotFoundError('Message not found');
   if (message.senderId !== userId)
     throw new ForbiddenError('You can only delete your own messages');
+  if (message.conversationId !== conversationId)
+    throw new ForbiddenError('Message does not belong to this conversation');
 
   await repository.softDeleteMessage(messageId);
 }
