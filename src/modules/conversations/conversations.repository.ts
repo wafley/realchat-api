@@ -229,7 +229,7 @@ export async function removeMember(conversationId: string, userId: string) {
     );
 }
 
-export const messageColumns = {
+const messageColumns = {
   id: messages.id,
   conversationId: messages.conversationId,
   senderId: messages.senderId,

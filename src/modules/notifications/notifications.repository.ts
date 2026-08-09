@@ -2,7 +2,7 @@ import db from '../../db/index';
 import { notifications } from '../../db/schema/notifications';
 import { and, desc, eq, sql } from 'drizzle-orm';
 
-export const notificationColumns = {
+const notificationColumns = {
   id: notifications.id,
   userId: notifications.userId,
   type: notifications.type,

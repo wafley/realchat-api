@@ -1,7 +1,7 @@
 import db from '../../db/index';
 import { conversations } from '../../db/schema/conversations';
 import { conversationMembers } from '../../db/schema/conversationMembers';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 
 export async function updateGroup(
   id: string,
@@ -36,17 +36,4 @@ export async function updateMemberRole(conversationId: string, userId: string, r
     )
     .returning();
   return member || null;
-}
-
-export async function countAdmins(conversationId: string) {
-  const [result] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(conversationMembers)
-    .where(
-      and(
-        eq(conversationMembers.conversationId, conversationId),
-        eq(conversationMembers.role, 'ADMIN'),
-      ),
-    );
-  return result.count;
 }

@@ -3,7 +3,7 @@ import { contacts } from '../../db/schema/contacts';
 import { users } from '../../db/schema/users';
 import { eq, and, desc, asc, inArray, ilike, or } from 'drizzle-orm';
 
-export const contactColumns = {
+const contactColumns = {
   id: contacts.id,
   userId: contacts.userId,
   contactId: contacts.contactId,
