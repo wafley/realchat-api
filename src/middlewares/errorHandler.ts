@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
+import { MulterError } from 'multer';
 import { AppError } from '../utils/errors';
 
 export function errorHandler(err: Error, _req: Request, res: Response, _next: NextFunction) {
@@ -13,6 +14,14 @@ export function errorHandler(err: Error, _req: Request, res: Response, _next: Ne
       success: false,
       message: 'Validation failed',
       errors: err.issues.map((e) => ({ field: e.path.join('.'), message: e.message })),
+    });
+    return;
+  }
+
+  if (err instanceof MulterError) {
+    res.status(err.code === 'LIMIT_FILE_SIZE' ? 413 : 400).json({
+      success: false,
+      message: err.message,
     });
     return;
   }
