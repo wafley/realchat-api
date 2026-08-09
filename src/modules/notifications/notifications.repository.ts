@@ -28,6 +28,14 @@ export async function create(data: {
   return notif;
 }
 
+export async function findById(id: string) {
+  const [notif] = await db
+    .select(notificationColumns)
+    .from(notifications)
+    .where(eq(notifications.id, id));
+  return notif || null;
+}
+
 export async function findByUserId(userId: string, limit = 20, offset = 0) {
   return db
     .select(notificationColumns)
