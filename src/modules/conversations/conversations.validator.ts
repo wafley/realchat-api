@@ -1,9 +1,5 @@
 import { z } from 'zod';
 
-export const conversationIdSchema = z.object({
-  id: z.string().uuid(),
-});
-
 export const messageIdSchema = z.object({
   id: z.string().uuid(),
   messageId: z.string().uuid(),

@@ -1,9 +1,5 @@
 import { z } from 'zod';
 
-export const groupIdSchema = z.object({
-  id: z.string().uuid(),
-});
-
 export const groupIdUserIdSchema = z.object({
   id: z.string().uuid(),
   userId: z.string().uuid(),
