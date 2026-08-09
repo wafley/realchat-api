@@ -78,7 +78,13 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
         const [message] = await db
           .select()
           .from(messages)
-          .where(and(eq(messages.id, data.messageId), eq(messages.senderId, userId)))
+          .where(
+            and(
+              eq(messages.id, data.messageId),
+              eq(messages.senderId, userId),
+              eq(messages.conversationId, data.conversationId),
+            ),
+          )
           .limit(1);
 
         if (!message) {
