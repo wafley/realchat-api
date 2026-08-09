@@ -9,6 +9,8 @@ import { errorHandler } from './middlewares/errorHandler';
 
 const app = express();
 
+app.set('trust proxy', env.trustProxy);
+
 app.use(helmet());
 const corsOrigins = env.corsOrigin.split(',').map((s) => s.trim());
 app.use(cors({ origin: corsOrigins, credentials: true }));
