@@ -81,10 +81,13 @@ export function initializeSocket(server: HttpServer) {
     socket.on('disconnect', async () => {
       console.log(`User ${userId} disconnected (socket: ${socket.id})`);
       try {
-        await db
-          .update(users)
-          .set({ isOnline: false, lastSeenAt: new Date() })
-          .where(eq(users.id, userId));
+        const remaining = onlineUsers.get(userId)?.size ?? 0;
+        if (remaining === 0) {
+          await db
+            .update(users)
+            .set({ isOnline: false, lastSeenAt: new Date() })
+            .where(eq(users.id, userId));
+        }
       } catch (err) {
         console.error(`Failed to mark user ${userId} offline:`, err);
       }
