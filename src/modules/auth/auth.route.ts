@@ -1,30 +1,30 @@
 import { Router } from 'express';
 import { validate } from '../../middlewares/validate';
-import { rateLimiter } from '../../middlewares/rateLimiter';
+import { authRateLimiter, refreshRateLimiter } from '../../middlewares/rateLimiter';
 import * as validator from './auth.validator';
 import * as controller from './auth.controller';
 
 const router = Router();
 
-router.post('/register', rateLimiter, validate(validator.registerSchema), controller.register);
-router.post('/login', rateLimiter, validate(validator.loginSchema), controller.login);
-router.post('/refresh', validate(validator.refreshSchema), controller.refresh);
-router.post('/logout', validate(validator.refreshSchema), controller.logout);
+router.post('/register', authRateLimiter, validate(validator.registerSchema), controller.register);
+router.post('/login', authRateLimiter, validate(validator.loginSchema), controller.login);
+router.post('/refresh', refreshRateLimiter, validate(validator.refreshSchema), controller.refresh);
+router.post('/logout', refreshRateLimiter, validate(validator.refreshSchema), controller.logout);
 router.post(
   '/forgot-password',
-  rateLimiter,
+  authRateLimiter,
   validate(validator.forgotPasswordSchema),
   controller.forgotPassword,
 );
 router.post(
   '/reset-password',
-  rateLimiter,
+  authRateLimiter,
   validate(validator.resetPasswordSchema),
   controller.resetPassword,
 );
 router.post(
   '/verify-email',
-  rateLimiter,
+  authRateLimiter,
   validate(validator.verifyEmailSchema),
   controller.verifyEmail,
 );
