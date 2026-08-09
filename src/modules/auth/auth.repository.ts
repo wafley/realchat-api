@@ -1,7 +1,7 @@
 import db from '../../db/index';
 import { users } from '../../db/schema/users';
 import { refreshTokens } from '../../db/schema/refreshTokens';
-import { eq, and, gt } from 'drizzle-orm';
+import { eq, and, gt, inArray } from 'drizzle-orm';
 
 export async function createUser(data: {
   username: string;
@@ -26,6 +26,11 @@ export async function findUserByUsername(username: string) {
 export async function findUserById(id: string) {
   const [user] = await db.select().from(users).where(eq(users.id, id));
   return user || null;
+}
+
+export async function findUsersByIds(ids: string[]) {
+  if (ids.length === 0) return [];
+  return db.select({ id: users.id }).from(users).where(inArray(users.id, ids));
 }
 
 export async function saveRefreshToken(data: { userId: string; token: string; expiredAt: Date }) {
