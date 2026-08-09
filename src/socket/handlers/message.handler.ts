@@ -4,6 +4,7 @@ import { messages } from '../../db/schema/messages';
 import { messageStatus } from '../../db/schema/messageStatus';
 import { conversationMembers } from '../../db/schema/conversationMembers';
 import { eq, and } from 'drizzle-orm';
+import { sendMessageSchema } from '../../modules/conversations/conversations.validator';
 
 export function setupMessageHandlers(io: Server, socket: Socket) {
   const userId = (socket as Socket & { userId: string }).userId;
@@ -12,12 +13,19 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
     'message:send',
     async (data: { conversationId: string; content: string; replyToId?: string }, callback) => {
       try {
+        const parsed = sendMessageSchema.safeParse(data);
+        if (!parsed.success) {
+          callback?.({ error: 'Invalid message payload', details: parsed.error.flatten() });
+          return;
+        }
+        const { conversationId, content, replyToId } = parsed.data;
+
         const membership = await db
           .select()
           .from(conversationMembers)
           .where(
             and(
-              eq(conversationMembers.conversationId, data.conversationId),
+              eq(conversationMembers.conversationId, conversationId),
               eq(conversationMembers.userId, userId),
             ),
           )
@@ -28,16 +36,11 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
           return;
         }
 
-        if (data.replyToId) {
+        if (replyToId) {
           const [replyMessage] = await db
             .select({ id: messages.id })
             .from(messages)
-            .where(
-              and(
-                eq(messages.id, data.replyToId),
-                eq(messages.conversationId, data.conversationId),
-              ),
-            )
+            .where(and(eq(messages.id, replyToId), eq(messages.conversationId, conversationId)))
             .limit(1);
 
           if (!replyMessage) {
@@ -49,11 +52,11 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
         const [message] = await db
           .insert(messages)
           .values({
-            conversationId: data.conversationId,
+            conversationId,
             senderId: userId,
-            content: data.content,
+            content,
             type: 'TEXT',
-            replyToId: data.replyToId,
+            replyToId: replyToId || null,
           })
           .returning();
 
@@ -63,7 +66,7 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
           status: 'SENT',
         });
 
-        io.to(`conversation:${data.conversationId}`).emit('message:new', message);
+        io.to(`conversation:${conversationId}`).emit('message:new', message);
         callback?.({ data: message });
       } catch {
         callback?.({ error: 'Failed to send message' });
