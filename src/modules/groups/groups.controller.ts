@@ -2,6 +2,7 @@ import { Response, NextFunction } from 'express';
 import { AuthRequest } from '../../middlewares/verifyJWT';
 import * as groupService from './groups.service';
 import { groupIdUserIdSchema } from './groups.validator';
+import { BadRequestError } from '../../utils/errors';
 
 export async function updateGroup(req: AuthRequest, res: Response, next: NextFunction) {
   try {
@@ -14,7 +15,7 @@ export async function updateGroup(req: AuthRequest, res: Response, next: NextFun
 
 export async function updateAvatar(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    if (!req.file) throw new Error('No file uploaded');
+    if (!req.file) throw new BadRequestError('No file uploaded');
     const result = await groupService.updateAvatar(req.userId!, req.params.id as string, req.file);
     res.status(200).json({ success: true, message: 'Avatar updated', data: result });
   } catch (error) {
