@@ -1,4 +1,5 @@
 import * as repository from './notifications.repository';
+import { NotFoundError, ForbiddenError } from '../../utils/errors';
 import { getIO } from '../../socket/index';
 
 export async function createAndEmit(data: {
@@ -27,8 +28,11 @@ export async function getUnreadCount(userId: string) {
 }
 
 export async function markAsRead(userId: string, notificationId: string) {
-  const notif = await repository.markAsRead(notificationId, userId);
-  return notif;
+  const notif = await repository.findById(notificationId);
+  if (!notif) throw new NotFoundError('Notification not found');
+  if (notif.userId !== userId) throw new ForbiddenError('You cannot access this notification');
+
+  return repository.markAsRead(notificationId, userId);
 }
 
 export async function markAllAsRead(userId: string) {
