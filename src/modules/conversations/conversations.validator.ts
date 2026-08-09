@@ -15,6 +15,14 @@ export const editMessageSchema = z
   })
   .strict();
 
+export const sendMessageSchema = z
+  .object({
+    conversationId: z.string().uuid(),
+    content: z.string().trim().min(1).max(5000),
+    replyToId: z.string().uuid().or(z.literal('')).optional(),
+  })
+  .strict();
+
 export const paginationSchema = z.object({
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(100).optional().default(50),
