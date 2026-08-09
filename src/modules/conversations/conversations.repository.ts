@@ -280,7 +280,7 @@ export async function updateMessageContent(id: string, content: string) {
 export async function softDeleteMessage(id: string) {
   const [message] = await db
     .update(messages)
-    .set({ isDeleted: true, updatedAt: new Date() })
+    .set({ isDeleted: true, content: '', updatedAt: new Date() })
     .where(eq(messages.id, id))
     .returning(messageColumns);
   return message || null;
