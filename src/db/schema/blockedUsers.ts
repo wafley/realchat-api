@@ -11,7 +11,7 @@ export const blockedUsers = pgTable(
     blockedId: uuid('blocked_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    createdAt: timestamp('created_at').notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
     unq: unique().on(table.blockerId, table.blockedId),
