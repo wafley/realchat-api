@@ -1,24 +1,34 @@
 import 'dotenv/config';
 import { z } from 'zod';
 
-const envSchema = z.object({
-  PORT: z.coerce.number().default(3000),
-  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-  DATABASE_URL: z.string().url(),
-  JWT_ACCESS_SECRET: z.string().min(1),
-  JWT_REFRESH_SECRET: z.string().min(1),
-  JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
-  JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
-  FRONTEND_URL: z.string().url().default('http://localhost:5173'),
-  CORS_ORIGIN: z.string().default('http://localhost:5173'),
-  UPLOAD_DIR: z.string().default('uploads'),
-  MAX_FILE_SIZE: z.coerce.number().default(5242880),
-  TRUST_PROXY: z.coerce.number().int().min(0).default(0),
-  SMTP_HOST: z.string().default('smtp.gmail.com'),
-  SMTP_PORT: z.coerce.number().default(587),
-  SMTP_USER: z.string().default(''),
-  SMTP_PASS: z.string().default(''),
-});
+const envSchema = z
+  .object({
+    PORT: z.coerce.number().default(3000),
+    NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+    DATABASE_URL: z.string().url(),
+    JWT_ACCESS_SECRET: z.string().min(1),
+    JWT_REFRESH_SECRET: z.string().min(1),
+    JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
+    JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
+    FRONTEND_URL: z.string().url().default('http://localhost:5173'),
+    CORS_ORIGIN: z.string().default('http://localhost:5173'),
+    UPLOAD_DIR: z.string().default('uploads'),
+    MAX_FILE_SIZE: z.coerce.number().default(5242880),
+    TRUST_PROXY: z.coerce.number().int().min(0).default(0),
+    SMTP_HOST: z.string().default('smtp.gmail.com'),
+    SMTP_PORT: z.coerce.number().default(587),
+    SMTP_USER: z.string().default(''),
+    SMTP_PASS: z.string().default(''),
+  })
+  .superRefine((data, ctx) => {
+    if (data.NODE_ENV === 'production' && (!data.SMTP_USER || !data.SMTP_PASS)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['SMTP_USER'],
+        message: 'SMTP_USER and SMTP_PASS are required in production',
+      });
+    }
+  });
 
 const parsed = envSchema.safeParse(process.env);
 
