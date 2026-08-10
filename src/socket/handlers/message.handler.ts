@@ -5,6 +5,13 @@ import { messageStatus } from '../../db/schema/messageStatus';
 import { conversationMembers } from '../../db/schema/conversationMembers';
 import { eq, and } from 'drizzle-orm';
 import { sendMessageSchema } from '../../modules/conversations/conversations.validator';
+import { env } from '../../config/env';
+import { createMessageRateLimiter } from '../rateLimit';
+
+const messageRateLimiter = createMessageRateLimiter({
+  perSecond: env.messageRatePerSecond,
+  perMinute: env.messageRatePerMinute,
+});
 
 export function setupMessageHandlers(io: Server, socket: Socket) {
   const userId = (socket as Socket & { userId: string }).userId;
@@ -13,6 +20,11 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
     'message:send',
     async (data: { conversationId: string; content: string; replyToId?: string }, callback) => {
       try {
+        if (!messageRateLimiter.allow(userId)) {
+          callback?.({ error: 'Rate limit exceeded. Please slow down.' });
+          return;
+        }
+
         const parsed = sendMessageSchema.safeParse(data);
         if (!parsed.success) {
           callback?.({ error: 'Invalid message payload', details: parsed.error.flatten() });
