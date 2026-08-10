@@ -18,9 +18,9 @@ export const messages = pgTable(
     isPinned: boolean('is_pinned').notNull().default(false),
     isEdited: boolean('is_edited').notNull().default(false),
     isDeleted: boolean('is_deleted').notNull().default(false),
-    editedAt: timestamp('edited_at'),
-    createdAt: timestamp('created_at').notNull().defaultNow(),
-    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+    editedAt: timestamp('edited_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
     conversationIdx: index().on(table.conversationId, table.createdAt),

@@ -13,7 +13,7 @@ export const messageStatus = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     status: varchar('status', { length: 10 }).notNull().default('SENT'),
-    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
     unq: unique().on(table.messageId, table.userId),

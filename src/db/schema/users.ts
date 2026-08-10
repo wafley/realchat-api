@@ -3,7 +3,7 @@ import { pgTable, uuid, varchar, text, timestamp, boolean } from 'drizzle-orm/pg
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
   username: varchar('username', { length: 50 }).notNull().unique(),
-  usernameUpdatedAt: timestamp('username_updated_at'),
+  usernameUpdatedAt: timestamp('username_updated_at', { withTimezone: true }),
   email: varchar('email', { length: 255 }).notNull().unique(),
   passwordHash: text('password_hash').notNull(),
   bio: text('bio'),
@@ -11,12 +11,16 @@ export const users = pgTable('users', {
   avatarUrl: text('avatar_url'),
   statusText: varchar('status_text', { length: 100 }).default('Hey there!'),
   isOnline: boolean('is_online').notNull().default(false),
-  lastSeenAt: timestamp('last_seen_at'),
+  lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
   isVerified: boolean('is_verified').notNull().default(false),
   verificationToken: text('verification_token'),
-  verificationTokenExpiresAt: timestamp('verification_token_expires_at'),
+  verificationTokenExpiresAt: timestamp('verification_token_expires_at', {
+    withTimezone: true,
+  }),
   resetToken: text('reset_token'),
-  resetTokenExpiresAt: timestamp('reset_token_expires_at'),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  resetTokenExpiresAt: timestamp('reset_token_expires_at', {
+    withTimezone: true,
+  }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

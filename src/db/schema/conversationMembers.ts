@@ -13,9 +13,9 @@ export const conversationMembers = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     role: varchar('role', { length: 10 }).notNull().default('MEMBER'),
-    joinedAt: timestamp('joined_at').notNull().defaultNow(),
-    mutedUntil: timestamp('muted_until'),
-    clearedAt: timestamp('cleared_at'),
+    joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
+    mutedUntil: timestamp('muted_until', { withTimezone: true }),
+    clearedAt: timestamp('cleared_at', { withTimezone: true }),
   },
   (table) => ({
     unq: unique().on(table.conversationId, table.userId),

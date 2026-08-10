@@ -8,5 +8,5 @@ export const conversations = pgTable('conversations', {
   avatarUrl: text('avatar_url'),
   description: text('description'),
   createdBy: uuid('created_by').references(() => users.id),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });

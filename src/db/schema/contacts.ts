@@ -12,7 +12,7 @@ export const contacts = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     customName: text('custom_name'),
-    createdAt: timestamp('created_at').notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
     unq: unique().on(table.userId, table.contactId),
