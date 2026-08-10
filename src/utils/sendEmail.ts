@@ -1,17 +1,18 @@
 import nodemailer from 'nodemailer';
 import { env } from '../config/env';
 
+const auth = env.smtpUser && env.smtpPass ? { user: env.smtpUser, pass: env.smtpPass } : undefined;
+
 const transporter = nodemailer.createTransport({
   host: env.smtpHost,
   port: env.smtpPort,
   secure: false,
-  auth: {
-    user: env.smtpUser,
-    pass: env.smtpPass,
-  },
+  ...(auth ? { auth } : {}),
 });
 
 export async function sendVerificationEmail(to: string, token: string) {
+  if (!env.smtpUser || !env.smtpPass) throw new Error('SMTP is not configured');
+
   const verificationUrl = `${env.frontendUrl}/verify-email?token=${token}`;
 
   await transporter.sendMail({
@@ -28,6 +29,8 @@ export async function sendVerificationEmail(to: string, token: string) {
 }
 
 export async function sendResetPasswordEmail(to: string, token: string) {
+  if (!env.smtpUser || !env.smtpPass) throw new Error('SMTP is not configured');
+
   const resetUrl = `${env.frontendUrl}/reset-password?token=${token}`;
 
   await transporter.sendMail({
