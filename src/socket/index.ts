@@ -6,18 +6,17 @@ import db from '../db/index';
 import { users } from '../db/schema/users';
 import { conversationMembers } from '../db/schema/conversationMembers';
 import { eq } from 'drizzle-orm';
+import { onlineUsers } from './onlineUsers';
+import { setupPresenceHandlers } from './handlers/presence.handler';
+import { setupMessageHandlers } from './handlers/message.handler';
+import { setupTypingHandlers } from './handlers/typing.handler';
+import { setupGroupHandlers } from './handlers/group.handler';
 
 let io: Server;
 
 export function getIO(): Server {
   if (!io) throw new Error('Socket.IO not initialized');
   return io;
-}
-
-const onlineUsers = new Map<string, Set<string>>();
-
-export function getOnlineUsers() {
-  return onlineUsers;
 }
 
 export function initializeSocket(server: HttpServer) {
@@ -43,43 +42,40 @@ export function initializeSocket(server: HttpServer) {
     }
   });
 
-  io.on('connection', async (socket) => {
+  io.on('connection', (socket) => {
     const userId = (socket as Socket & { userId: string }).userId;
     console.log(`User ${userId} connected (socket: ${socket.id})`);
 
-    try {
-      await db.update(users).set({ isOnline: true }).where(eq(users.id, userId));
-      socket.join(`user:${userId}`);
+    // Register event handlers synchronously BEFORE any async (DB) work,
+    // otherwise events emitted right after 'connect' are dropped by the server.
+    setupMessageHandlers(io, socket);
+    setupTypingHandlers(io, socket);
+    setupGroupHandlers(socket);
+    void setupPresenceHandlers(io, socket).catch((err) => {
+      console.error(`Failed to set up presence for user ${userId}:`, err);
+    });
 
-      const memberships = await db
-        .select({ conversationId: conversationMembers.conversationId })
-        .from(conversationMembers)
-        .where(eq(conversationMembers.userId, userId));
-      for (const membership of memberships) {
-        socket.join(`conversation:${membership.conversationId}`);
+    void (async () => {
+      try {
+        await db.update(users).set({ isOnline: true }).where(eq(users.id, userId));
+        socket.join(`user:${userId}`);
+
+        const memberships = await db
+          .select({ conversationId: conversationMembers.conversationId })
+          .from(conversationMembers)
+          .where(eq(conversationMembers.userId, userId));
+        for (const membership of memberships) {
+          socket.join(`conversation:${membership.conversationId}`);
+        }
+      } catch (err) {
+        console.error(`Failed to set up socket for user ${userId}:`, err);
       }
-
-      const [
-        { setupPresenceHandlers },
-        { setupMessageHandlers },
-        { setupTypingHandlers },
-        { setupGroupHandlers },
-      ] = await Promise.all([
-        import('./handlers/presence.handler'),
-        import('./handlers/message.handler'),
-        import('./handlers/typing.handler'),
-        import('./handlers/group.handler'),
-      ]);
-      await setupPresenceHandlers(io, socket);
-      setupMessageHandlers(io, socket);
-      setupTypingHandlers(io, socket);
-      setupGroupHandlers(socket);
-    } catch (err) {
-      console.error(`Failed to set up socket for user ${userId}:`, err);
-    }
+    })();
 
     socket.on('disconnect', async () => {
       console.log(`User ${userId} disconnected (socket: ${socket.id})`);
+      // Give other disconnect listeners (presence cleanup) a chance to run first.
+      await new Promise((resolve) => setImmediate(resolve));
       try {
         const remaining = onlineUsers.get(userId)?.size ?? 0;
         if (remaining === 0) {

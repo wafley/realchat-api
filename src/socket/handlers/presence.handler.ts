@@ -2,7 +2,7 @@ import { Server, Socket } from 'socket.io';
 import db from '../../db/index';
 import { conversationMembers } from '../../db/schema/conversationMembers';
 import { eq } from 'drizzle-orm';
-import { getOnlineUsers } from '../index';
+import { onlineUsers } from '../onlineUsers';
 
 export async function setupPresenceHandlers(io: Server, socket: Socket) {
   const userId = (socket as Socket & { userId: string }).userId;
@@ -12,7 +12,6 @@ export async function setupPresenceHandlers(io: Server, socket: Socket) {
     .from(conversationMembers)
     .where(eq(conversationMembers.userId, userId));
 
-  const onlineUsers = getOnlineUsers();
   if (!onlineUsers.has(userId)) {
     onlineUsers.set(userId, new Set());
   }
