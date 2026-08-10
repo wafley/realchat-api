@@ -1,0 +1,11 @@
+* text=auto eol=lf
+
+# Binary formats — never normalize
+*.jpg binary
+*.jpeg binary
+*.png binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.zip binary
