@@ -205,3 +205,22 @@ export async function deleteMessage(userId: string, conversationId: string, mess
 
   await repository.softDeleteMessage(messageId);
 }
+
+export async function getPinnedMessages(userId: string, conversationId: string) {
+  const conversation = await repository.findConversationById(conversationId);
+  if (!conversation) throw new NotFoundError('Conversation not found');
+
+  const member = await repository.isMember(conversationId, userId);
+  if (!member) throw new ForbiddenError('You are not a member of this conversation');
+
+  const rows = await repository.findPinnedMessagesByConversation(conversationId);
+
+  return rows.map(({ senderUsername, senderFullName, senderAvatarUrl, ...message }) => ({
+    ...message,
+    sender: {
+      username: senderUsername,
+      fullName: senderFullName,
+      avatarUrl: senderAvatarUrl,
+    },
+  }));
+}

@@ -14,6 +14,7 @@ router.post(
 );
 router.get('/', verifyJWT, controller.getConversations);
 router.get('/:id/messages', verifyJWT, controller.getMessages);
+router.get('/:id/pinned', verifyJWT, controller.getPinnedMessages);
 router.put(
   '/:id/messages/:messageId',
   verifyJWT,
