@@ -327,6 +327,12 @@ export async function findPinnedMessagesByConversation(conversationId: string) {
     .select({ ...messageColumns, ...pinnedMessageSenderColumns })
     .from(messages)
     .innerJoin(users, eq(users.id, messages.senderId))
-    .where(and(eq(messages.conversationId, conversationId), eq(messages.isPinned, true)))
+    .where(
+      and(
+        eq(messages.conversationId, conversationId),
+        eq(messages.isPinned, true),
+        eq(messages.isDeleted, false),
+      ),
+    )
     .orderBy(desc(messages.updatedAt));
 }

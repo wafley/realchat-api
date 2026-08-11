@@ -260,7 +260,7 @@ const socket = io('http://{{BACKEND_IP}}:3000', {
 | `message:new` | `{ conversationId, message }` | New message in conversation |
 | `message:status` | `{ messageId, status: 'DELIVERED' \| 'SEEN', userId, seenAt }` | Message delivery/read status for the sender |
 | `message:deleted` | `{ conversationId, messageId }` | Message deleted |
-| `message:pin:updated` | `{ messageId, isPinned }` | Message pin/unpin state changed |
+| `message:pin:updated` | `{ conversationId, messageId, isPinned }` | Message pin/unpin state changed |
 | `typing:start` | `{ conversationId, userId }` | User started typing |
 | `typing:stop` | `{ conversationId, userId }` | User stopped typing |
 | `presence:online` | `{ userId }` | User came online |

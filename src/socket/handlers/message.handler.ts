@@ -303,7 +303,11 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
   ) => {
     try {
       const [message] = await db
-        .select({ id: messages.id, conversationId: messages.conversationId })
+        .select({
+          id: messages.id,
+          conversationId: messages.conversationId,
+          isDeleted: messages.isDeleted,
+        })
         .from(messages)
         .where(eq(messages.id, messageId))
         .limit(1);
@@ -329,9 +333,15 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
         return;
       }
 
+      if (message.isDeleted && isPinned) {
+        callback?.({ error: 'Cannot pin a deleted message' });
+        return;
+      }
+
       await updateMessagePinned(messageId, isPinned);
 
       io.to(`conversation:${message.conversationId}`).emit('message:pin:updated', {
+        conversationId: message.conversationId,
         messageId,
         isPinned,
       });
