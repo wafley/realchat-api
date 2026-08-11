@@ -24,7 +24,15 @@ const seenLimiter = createFixedWindowLimiter({
   max: 1,
 });
 
-const pruneInterval = setInterval(() => seenLimiter.prune(), 60_000);
+const pinLimiter = createFixedWindowLimiter({
+  windowMs: env.pinThrottleMs,
+  max: 1,
+});
+
+const pruneInterval = setInterval(() => {
+  seenLimiter.prune();
+  pinLimiter.prune();
+}, 60_000);
 pruneInterval.unref();
 
 export function setupMessageHandlers(io: Server, socket: Socket) {
@@ -353,6 +361,11 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
   };
 
   socket.on('message:pin', (data: { messageId: string }, callback) => {
+    if (!pinLimiter.allow(userId)) {
+      callback?.({ error: 'Rate limit exceeded. Please slow down.' });
+      return;
+    }
+
     const parsed = pinMessageSchema.safeParse(data);
     if (!parsed.success) {
       callback?.({ error: 'Invalid message:pin payload' });
@@ -362,6 +375,11 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
   });
 
   socket.on('message:unpin', (data: { messageId: string }, callback) => {
+    if (!pinLimiter.allow(userId)) {
+      callback?.({ error: 'Rate limit exceeded. Please slow down.' });
+      return;
+    }
+
     const parsed = pinMessageSchema.safeParse(data);
     if (!parsed.success) {
       callback?.({ error: 'Invalid message:unpin payload' });
