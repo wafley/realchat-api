@@ -4,6 +4,7 @@ dist/
 uploads/**
 !uploads/**/
 !uploads/**/.gitkeep
+*.log
 
 # Docs
 struktur-taks.md
