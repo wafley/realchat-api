@@ -255,6 +255,7 @@ const socket = io('http://{{BACKEND_IP}}:3000', {
 | Event | Payload | Description |
 |-------|---------|-------------|
 | `message:new` | `{ conversationId, message }` | New message in conversation |
+| `message:status` | `{ messageId, status: 'DELIVERED' \| 'SEEN', userId, seenAt }` | Message delivery/read status for the sender |
 | `message:deleted` | `{ conversationId, messageId }` | Message deleted |
 | `typing:start` | `{ conversationId, userId }` | User started typing |
 | `typing:stop` | `{ conversationId, userId }` | User stopped typing |

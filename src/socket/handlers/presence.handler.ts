@@ -3,6 +3,7 @@ import db from '../../db/index';
 import { conversationMembers } from '../../db/schema/conversationMembers';
 import { eq } from 'drizzle-orm';
 import { onlineUsers } from '../onlineUsers';
+import { catchUpMessageDelivery } from './message.handler';
 
 export async function setupPresenceHandlers(io: Server, socket: Socket) {
   const userId = (socket as Socket & { userId: string }).userId;
@@ -21,6 +22,9 @@ export async function setupPresenceHandlers(io: Server, socket: Socket) {
     for (const conv of userConversations) {
       io.to(`conversation:${conv.conversationId}`).emit('presence:online', { userId });
     }
+    void catchUpMessageDelivery(io, userId).catch((err) => {
+      console.error(`Failed to run delivery catch-up for user ${userId}:`, err);
+    });
   }
 
   socket.on('disconnect', () => {
