@@ -244,6 +244,12 @@ const messageColumns = {
   createdAt: messages.createdAt,
 };
 
+const pinnedMessageSenderColumns = {
+  senderUsername: users.username,
+  senderFullName: users.fullName,
+  senderAvatarUrl: users.avatarUrl,
+};
+
 export async function findMessagesByConversationId(
   conversationId: string,
   cursor?: string,
@@ -305,4 +311,22 @@ export async function softDeleteMessage(id: string) {
     .where(eq(messages.id, id))
     .returning(messageColumns);
   return message || null;
+}
+
+export async function updateMessagePinned(id: string, isPinned: boolean) {
+  const [message] = await db
+    .update(messages)
+    .set({ isPinned, updatedAt: new Date() })
+    .where(eq(messages.id, id))
+    .returning(messageColumns);
+  return message || null;
+}
+
+export async function findPinnedMessagesByConversation(conversationId: string) {
+  return db
+    .select({ ...messageColumns, ...pinnedMessageSenderColumns })
+    .from(messages)
+    .innerJoin(users, eq(users.id, messages.senderId))
+    .where(and(eq(messages.conversationId, conversationId), eq(messages.isPinned, true)))
+    .orderBy(desc(messages.updatedAt));
 }

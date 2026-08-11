@@ -26,6 +26,12 @@ export const messageSeenSchema = z
   })
   .strict();
 
+export const pinMessageSchema = z
+  .object({
+    messageId: z.string().uuid(),
+  })
+  .strict();
+
 export const paginationSchema = z.object({
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(100).optional().default(50),
