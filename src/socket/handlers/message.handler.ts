@@ -294,3 +294,50 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
     },
   );
 }
+
+export async function catchUpMessageDelivery(io: Server, userId: string) {
+  try {
+    const pending = await db
+      .select({
+        messageId: messageStatus.messageId,
+        senderId: messages.senderId,
+      })
+      .from(messageStatus)
+      .innerJoin(messages, eq(messages.id, messageStatus.messageId))
+      .where(
+        and(
+          eq(messageStatus.userId, userId),
+          eq(messageStatus.status, 'SENT'),
+          ne(messages.senderId, userId),
+        ),
+      );
+
+    if (pending.length === 0) return;
+
+    const now = new Date();
+    await db
+      .update(messageStatus)
+      .set({ status: 'DELIVERED', updatedAt: now })
+      .where(
+        and(
+          eq(messageStatus.userId, userId),
+          eq(messageStatus.status, 'SENT'),
+          inArray(
+            messageStatus.messageId,
+            pending.map((row) => row.messageId),
+          ),
+        ),
+      );
+
+    for (const { messageId, senderId } of pending) {
+      io.to(`user:${senderId}`).emit('message:status', {
+        messageId,
+        status: 'DELIVERED',
+        userId,
+        seenAt: null,
+      });
+    }
+  } catch (err) {
+    console.error(`Failed to deliver pending SENT messages for user ${userId}:`, err);
+  }
+}
