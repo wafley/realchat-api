@@ -71,6 +71,13 @@
       "when": 1786326642837,
       "tag": "0009_mute_beyonder",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1786412017696,
+      "tag": "0010_confused_shatterstar",
+      "breakpoints": true
     }
   ]
 }
