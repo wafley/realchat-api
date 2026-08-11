@@ -19,6 +19,13 @@ export const sendMessageSchema = z
   })
   .strict();
 
+export const messageSeenSchema = z
+  .object({
+    conversationId: z.string().uuid(),
+    lastSeenMessageId: z.string().uuid(),
+  })
+  .strict();
+
 export const paginationSchema = z.object({
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(100).optional().default(50),
