@@ -3,7 +3,7 @@ import postgres from 'postgres';
 import { env } from '../config/env';
 import * as schema from './schema/index';
 
-const queryClient = postgres(env.databaseUrl);
+const queryClient = postgres(env.databaseUrl, { prepare: false });
 const db = drizzle(queryClient, { schema });
 
 export default db;
