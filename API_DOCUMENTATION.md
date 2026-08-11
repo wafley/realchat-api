@@ -173,6 +173,7 @@ Ulang request yang gagal
 | Method | Endpoint | Body/Params | Response |
 |--------|----------|-------------|----------|
 | GET | `/conversations/:id/messages` | `?cursor=&limit=50` | 200 — paginated messages |
+| GET | `/conversations/:id/pinned` | `:id` (uuid) | 200 — `{ messages }` daftar pesan terpin |
 | PUT | `/conversations/:id/messages/:messageId` | `{ content }` | 200 — edited message |
 | DELETE | `/conversations/:id/messages/:messageId` | — | 200 — deleted |
 
@@ -245,6 +246,8 @@ const socket = io('http://{{BACKEND_IP}}:3000', {
 |-------|---------|-------------|
 | `message:send` | `{ conversationId, content, replyToId? }` | Send a message |
 | `message:delete` | `{ conversationId, messageId }` | Delete a message |
+| `message:pin` | `{ messageId }` | Pin a message (broadcast ke room) |
+| `message:unpin` | `{ messageId }` | Unpin a message (broadcast ke room) |
 | `typing:start` | `{ conversationId }` | User started typing |
 | `typing:stop` | `{ conversationId }` | User stopped typing |
 | `group:join` | `{ conversationId }` | Join a group room |
@@ -257,6 +260,7 @@ const socket = io('http://{{BACKEND_IP}}:3000', {
 | `message:new` | `{ conversationId, message }` | New message in conversation |
 | `message:status` | `{ messageId, status: 'DELIVERED' \| 'SEEN', userId, seenAt }` | Message delivery/read status for the sender |
 | `message:deleted` | `{ conversationId, messageId }` | Message deleted |
+| `message:pin:updated` | `{ conversationId, messageId, isPinned }` | Message pin/unpin state changed |
 | `typing:start` | `{ conversationId, userId }` | User started typing |
 | `typing:stop` | `{ conversationId, userId }` | User stopped typing |
 | `presence:online` | `{ userId }` | User came online |

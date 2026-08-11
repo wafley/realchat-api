@@ -66,6 +66,18 @@ export async function getMessages(req: AuthRequest, res: Response, next: NextFun
   }
 }
 
+export async function getPinnedMessages(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const result = await conversationService.getPinnedMessages(
+      req.userId!,
+      req.params.id as string,
+    );
+    res.status(200).json({ success: true, data: { messages: result } });
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function editMessage(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const { id, messageId } = messageIdSchema.parse(req.params);

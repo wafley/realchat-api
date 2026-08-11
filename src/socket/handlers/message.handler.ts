@@ -7,7 +7,9 @@ import { eq, and, ne, sql, inArray } from 'drizzle-orm';
 import {
   sendMessageSchema,
   messageSeenSchema,
+  pinMessageSchema,
 } from '../../modules/conversations/conversations.validator';
+import { updateMessagePinned } from '../../modules/conversations/conversations.repository';
 import { env } from '../../config/env';
 import { createMessageRateLimiter, createFixedWindowLimiter } from '../rateLimit';
 import { onlineUsers } from '../onlineUsers';
@@ -293,6 +295,80 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
       }
     },
   );
+
+  const setMessagePinned = async (
+    messageId: string,
+    isPinned: boolean,
+    callback?: (response: unknown) => void,
+  ) => {
+    try {
+      const [message] = await db
+        .select({
+          id: messages.id,
+          conversationId: messages.conversationId,
+          isDeleted: messages.isDeleted,
+        })
+        .from(messages)
+        .where(eq(messages.id, messageId))
+        .limit(1);
+
+      if (!message) {
+        callback?.({ error: 'Message not found' });
+        return;
+      }
+
+      const [membership] = await db
+        .select({ id: conversationMembers.id })
+        .from(conversationMembers)
+        .where(
+          and(
+            eq(conversationMembers.conversationId, message.conversationId),
+            eq(conversationMembers.userId, userId),
+          ),
+        )
+        .limit(1);
+
+      if (!membership) {
+        callback?.({ error: 'Not a member of this conversation' });
+        return;
+      }
+
+      if (message.isDeleted && isPinned) {
+        callback?.({ error: 'Cannot pin a deleted message' });
+        return;
+      }
+
+      await updateMessagePinned(messageId, isPinned);
+
+      io.to(`conversation:${message.conversationId}`).emit('message:pin:updated', {
+        conversationId: message.conversationId,
+        messageId,
+        isPinned,
+      });
+
+      callback?.({ data: { messageId, isPinned } });
+    } catch {
+      callback?.({ error: 'Failed to update message pin' });
+    }
+  };
+
+  socket.on('message:pin', (data: { messageId: string }, callback) => {
+    const parsed = pinMessageSchema.safeParse(data);
+    if (!parsed.success) {
+      callback?.({ error: 'Invalid message:pin payload' });
+      return;
+    }
+    void setMessagePinned(parsed.data.messageId, true, callback);
+  });
+
+  socket.on('message:unpin', (data: { messageId: string }, callback) => {
+    const parsed = pinMessageSchema.safeParse(data);
+    if (!parsed.success) {
+      callback?.({ error: 'Invalid message:unpin payload' });
+      return;
+    }
+    void setMessagePinned(parsed.data.messageId, false, callback);
+  });
 }
 
 export async function catchUpMessageDelivery(io: Server, userId: string) {
