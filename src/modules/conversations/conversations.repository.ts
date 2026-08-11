@@ -2,6 +2,7 @@ import db from '../../db/index';
 import { conversations } from '../../db/schema/conversations';
 import { conversationMembers } from '../../db/schema/conversationMembers';
 import { messages } from '../../db/schema/messages';
+import { messageStatus } from '../../db/schema/messageStatus';
 import { users } from '../../db/schema/users';
 import { contacts } from '../../db/schema/contacts';
 import { eq, and, desc, lt, ne, or, count, ilike, sql, aliasedTable, type SQL } from 'drizzle-orm';
@@ -251,9 +252,29 @@ export async function findMessagesByConversationId(
   const conditions = [eq(messages.conversationId, conversationId)];
   if (cursor) conditions.push(lt(messages.createdAt, new Date(cursor)));
 
+  const statusAgg = db
+    .select({
+      messageId: messageStatus.messageId,
+      statusRank:
+        sql<number>`MAX(CASE ${messageStatus.status} WHEN 'SEEN' THEN 2 WHEN 'DELIVERED' THEN 1 ELSE 0 END)`.as(
+          'status_rank',
+        ),
+      seenAt: sql<Date | null>`MIN(${messageStatus.seenAt})`
+        .mapWith((v: unknown) => (v === null || v === undefined ? null : new Date(v as string)))
+        .as('seen_at'),
+    })
+    .from(messageStatus)
+    .groupBy(messageStatus.messageId)
+    .as('status_agg');
+
   return db
-    .select(messageColumns)
+    .select({
+      ...messageColumns,
+      statusRank: statusAgg.statusRank,
+      seenAt: statusAgg.seenAt,
+    })
     .from(messages)
+    .leftJoin(statusAgg, eq(statusAgg.messageId, messages.id))
     .where(and(...conditions))
     .orderBy(desc(messages.createdAt))
     .limit(limit + 1);

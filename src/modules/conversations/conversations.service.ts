@@ -164,8 +164,14 @@ export async function getMessages(
   const hasMore = rawMessages.length > limit;
   const messagesList = hasMore ? rawMessages.slice(0, limit) : rawMessages;
 
+  const messages = messagesList.map(({ statusRank, seenAt, ...message }) => ({
+    ...message,
+    status: statusRank == null || statusRank < 1 ? 'SENT' : statusRank >= 2 ? 'SEEN' : 'DELIVERED',
+    seenAt: seenAt ? seenAt.toISOString() : null,
+  }));
+
   return {
-    messages: messagesList,
+    messages,
     nextCursor: hasMore ? messagesList[messagesList.length - 1].createdAt.toISOString() : null,
   };
 }
