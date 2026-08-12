@@ -173,9 +173,13 @@ Ulang request yang gagal
 | Method | Endpoint | Body/Params | Response |
 |--------|----------|-------------|----------|
 | GET | `/conversations/:id/messages` | `?cursor=&limit=50` | 200 — paginated messages |
-| GET | `/conversations/:id/pinned` | `:id` (uuid) | 200 — `{ messages }` daftar pesan terpin |
+| GET | `/conversations/:id/pinned` | `?limit=50` | 200 — `{ messages }` daftar pesan terpin |
 | PUT | `/conversations/:id/messages/:messageId` | `{ content }` | 200 — edited message |
 | DELETE | `/conversations/:id/messages/:messageId` | — | 200 — deleted |
+| PUT | `/conversations/:id/messages/:messageId/pin` | — | 200 — `{ isPinned: true }` (broadcast `message:pin:updated`) |
+| DELETE | `/conversations/:id/messages/:messageId/pin` | — | 200 — `{ isPinned: false }` |
+| POST | `/conversations/:id/messages/:messageId/forward` | `{ targetConversationId }` | 201 — forwarded message (broadcast `message:new`) |
+| POST | `/conversations/:id/read` | — | 200 — `{ updated, seenAt }` tandai semua pesan masuk SEEN |
 
 > **`GET /conversations/:id/pinned`:** diurutkan `pinnedAt` DESC — pesan yang paling baru di-pin tampil pertama. `pinnedAt` hanya bergeser saat pin/unpin, sehingga mengedit pesan terpin tidak mengubah urutan. Unpin menyetel `pinnedAt` ke `null`. Pesan tipe `SYSTEM` tidak dapat di-pin dan dikecualikan dari daftar.
 

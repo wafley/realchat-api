@@ -6,7 +6,20 @@ import { messageStatus } from '../../db/schema/messageStatus';
 import { messageReactions } from '../../db/schema/messageReactions';
 import { users } from '../../db/schema/users';
 import { contacts } from '../../db/schema/contacts';
-import { eq, and, desc, lt, ne, or, count, ilike, sql, aliasedTable, type SQL } from 'drizzle-orm';
+import {
+  eq,
+  and,
+  desc,
+  lt,
+  ne,
+  or,
+  count,
+  ilike,
+  sql,
+  inArray,
+  aliasedTable,
+  type SQL,
+} from 'drizzle-orm';
 
 export const conversationColumns = {
   id: conversations.id,
@@ -329,7 +342,7 @@ export async function updateMessagePinned(id: string, isPinned: boolean) {
   return message || null;
 }
 
-export async function findPinnedMessagesByConversation(conversationId: string) {
+export async function findPinnedMessagesByConversation(conversationId: string, limit = 50) {
   return db
     .select({ ...messageColumns, ...pinnedMessageSenderColumns })
     .from(messages)
@@ -342,7 +355,86 @@ export async function findPinnedMessagesByConversation(conversationId: string) {
         ne(messages.type, 'SYSTEM'),
       ),
     )
-    .orderBy(desc(messages.pinnedAt), desc(messages.createdAt));
+    .orderBy(desc(messages.pinnedAt), desc(messages.createdAt))
+    .limit(limit);
+}
+
+export async function insertMessage(data: {
+  conversationId: string;
+  senderId: string;
+  content: string;
+  type: string;
+}) {
+  const [message] = await db.insert(messages).values(data).returning(messageColumns);
+  return message || null;
+}
+
+export async function insertMessageStatuses(
+  rows: { messageId: string; userId: string; status: 'SENT' | 'DELIVERED' }[],
+) {
+  if (rows.length === 0) return;
+  await db.insert(messageStatus).values(rows);
+}
+
+export async function findConversationMemberIds(conversationId: string) {
+  return (
+    await db
+      .select({ userId: conversationMembers.userId })
+      .from(conversationMembers)
+      .where(eq(conversationMembers.conversationId, conversationId))
+  ).map((row) => row.userId);
+}
+
+export async function findIncomingMessageIdsByConversation(conversationId: string, userId: string) {
+  return (
+    await db
+      .select({ id: messages.id })
+      .from(messages)
+      .where(and(eq(messages.conversationId, conversationId), ne(messages.senderId, userId)))
+  ).map((row) => row.id);
+}
+
+export async function markMessagesSeen(userId: string, messageIds: string[], seenAt: Date) {
+  const existingRows = await db
+    .select({ messageId: messageStatus.messageId })
+    .from(messageStatus)
+    .where(and(eq(messageStatus.userId, userId), inArray(messageStatus.messageId, messageIds)));
+  const existingIds = new Set(existingRows.map((row) => row.messageId));
+
+  const updated = await db
+    .update(messageStatus)
+    .set({ status: 'SEEN', seenAt, updatedAt: seenAt })
+    .where(
+      and(
+        eq(messageStatus.userId, userId),
+        ne(messageStatus.status, 'SEEN'),
+        inArray(messageStatus.messageId, messageIds),
+      ),
+    )
+    .returning({ messageId: messageStatus.messageId });
+
+  const newIds = messageIds.filter((id) => !existingIds.has(id));
+  if (newIds.length > 0) {
+    await db.insert(messageStatus).values(
+      newIds.map((id) => ({
+        messageId: id,
+        userId,
+        status: 'SEEN' as const,
+        seenAt,
+        updatedAt: seenAt,
+      })),
+    );
+  }
+
+  return [...new Set([...updated.map((row) => row.messageId), ...newIds])];
+}
+
+export async function findMessageSenders(messageIds: string[]) {
+  if (messageIds.length === 0) return [];
+  return db
+    .select({ id: messages.id, senderId: messages.senderId })
+    .from(messages)
+    .where(inArray(messages.id, messageIds));
 }
 
 export async function findReaction(messageId: string, userId: string, emoji: string) {

@@ -26,6 +26,12 @@ export const messageSeenSchema = z
   })
   .strict();
 
+export const forwardMessageSchema = z
+  .object({
+    targetConversationId: z.string().uuid(),
+  })
+  .strict();
+
 export const pinMessageSchema = z
   .object({
     messageId: z.string().uuid(),
