@@ -11,6 +11,7 @@ import {
   and,
   desc,
   lt,
+  gt,
   ne,
   or,
   count,
@@ -233,6 +234,20 @@ export async function isMember(conversationId: string, userId: string) {
   return !!result;
 }
 
+export async function findMembershipByUser(conversationId: string, userId: string) {
+  const [result] = await db
+    .select({ clearedAt: conversationMembers.clearedAt })
+    .from(conversationMembers)
+    .where(
+      and(
+        eq(conversationMembers.conversationId, conversationId),
+        eq(conversationMembers.userId, userId),
+      ),
+    )
+    .limit(1);
+  return result || null;
+}
+
 export async function removeMember(conversationId: string, userId: string) {
   await db
     .delete(conversationMembers)
@@ -269,8 +284,10 @@ export async function findMessagesByConversationId(
   conversationId: string,
   cursor?: string,
   limit = 50,
+  clearedAt?: Date | null,
 ) {
   const conditions = [eq(messages.conversationId, conversationId)];
+  if (clearedAt) conditions.push(gt(messages.createdAt, clearedAt));
   if (cursor) conditions.push(lt(messages.createdAt, new Date(cursor)));
 
   const statusAgg = db
@@ -299,6 +316,20 @@ export async function findMessagesByConversationId(
     .where(and(...conditions))
     .orderBy(desc(messages.createdAt))
     .limit(limit + 1);
+}
+
+export async function clearConversation(conversationId: string, userId: string) {
+  const [row] = await db
+    .update(conversationMembers)
+    .set({ clearedAt: sql`now()` })
+    .where(
+      and(
+        eq(conversationMembers.conversationId, conversationId),
+        eq(conversationMembers.userId, userId),
+      ),
+    )
+    .returning({ clearedAt: conversationMembers.clearedAt });
+  return row || null;
 }
 
 export async function findMessageById(id: string) {

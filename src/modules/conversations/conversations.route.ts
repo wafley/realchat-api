@@ -33,5 +33,6 @@ router.post(
 router.post('/:id/read', verifyJWT, controller.markConversationRead);
 router.get('/:id', verifyJWT, controller.getConversationById);
 router.delete('/:id', verifyJWT, controller.leaveConversation);
+router.patch('/:id/clear', verifyJWT, controller.clearConversation);
 
 export default router;

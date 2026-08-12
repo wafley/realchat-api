@@ -161,7 +161,13 @@ export async function getMessages(
   const member = await repository.isMember(conversationId, userId);
   if (!member) throw new ForbiddenError('You are not a member of this conversation');
 
-  const rawMessages = await repository.findMessagesByConversationId(conversationId, cursor, limit);
+  const membership = await repository.findMembershipByUser(conversationId, userId);
+  const rawMessages = await repository.findMessagesByConversationId(
+    conversationId,
+    cursor,
+    limit,
+    membership?.clearedAt,
+  );
   const hasMore = rawMessages.length > limit;
   const messagesList = hasMore ? rawMessages.slice(0, limit) : rawMessages;
 
@@ -175,6 +181,17 @@ export async function getMessages(
     messages,
     nextCursor: hasMore ? messagesList[messagesList.length - 1].createdAt.toISOString() : null,
   };
+}
+
+export async function clearConversation(userId: string, conversationId: string) {
+  const conversation = await repository.findConversationById(conversationId);
+  if (!conversation) throw new NotFoundError('Conversation not found');
+
+  const member = await repository.isMember(conversationId, userId);
+  if (!member) throw new ForbiddenError('You are not a member of this conversation');
+
+  const row = await repository.clearConversation(conversationId, userId);
+  return { clearedAt: row?.clearedAt ? row.clearedAt.toISOString() : null };
 }
 
 export async function editMessage(
