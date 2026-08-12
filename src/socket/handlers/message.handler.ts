@@ -8,8 +8,15 @@ import {
   sendMessageSchema,
   messageSeenSchema,
   pinMessageSchema,
+  reactionSchema,
 } from '../../modules/conversations/conversations.validator';
-import { updateMessagePinned } from '../../modules/conversations/conversations.repository';
+import {
+  updateMessagePinned,
+  findReaction,
+  addReaction,
+  removeReaction,
+  findReactionsByMessage,
+} from '../../modules/conversations/conversations.repository';
 import { env } from '../../config/env';
 import { createMessageRateLimiter, createFixedWindowLimiter } from '../rateLimit';
 import { onlineUsers } from '../onlineUsers';
@@ -29,11 +36,28 @@ const pinLimiter = createFixedWindowLimiter({
   max: 1,
 });
 
+const reactionLimiter = createFixedWindowLimiter({
+  windowMs: env.reactionThrottleMs,
+  max: 1,
+});
+
 const pruneInterval = setInterval(() => {
   seenLimiter.prune();
   pinLimiter.prune();
+  reactionLimiter.prune();
 }, 60_000);
 pruneInterval.unref();
+
+async function groupReactions(messageId: string) {
+  const rows = await findReactionsByMessage(messageId);
+  const byEmoji = new Map<string, string[]>();
+  for (const row of rows) {
+    const userIds = byEmoji.get(row.emoji) ?? [];
+    userIds.push(row.userId);
+    byEmoji.set(row.emoji, userIds);
+  }
+  return [...byEmoji.entries()].map(([emoji, userIds]) => ({ emoji, userIds }));
+}
 
 export function setupMessageHandlers(io: Server, socket: Socket) {
   const userId = (socket as Socket & { userId: string }).userId;
@@ -393,6 +417,119 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
     }
     void setMessagePinned(parsed.data.messageId, false, callback);
   });
+
+  const emitReactions = (conversationId: string, messageId: string) =>
+    groupReactions(messageId).then((reactions) => {
+      io.to(`conversation:${conversationId}`).emit('message:reaction:updated', {
+        messageId,
+        reactions,
+      });
+      return reactions;
+    });
+
+  socket.on(
+    'message:reaction:add',
+    async (data: { messageId: string; emoji: string }, callback?: (response: unknown) => void) => {
+      try {
+        if (!reactionLimiter.allow(`${userId}:${data.messageId}`)) {
+          callback?.({ error: 'Rate limit exceeded. Please slow down.' });
+          return;
+        }
+
+        const parsed = reactionSchema.safeParse(data);
+        if (!parsed.success) {
+          callback?.({ error: 'Invalid message:reaction:add payload' });
+          return;
+        }
+        const { messageId, emoji } = parsed.data;
+
+        const [message] = await db
+          .select({ conversationId: messages.conversationId })
+          .from(messages)
+          .where(eq(messages.id, messageId))
+          .limit(1);
+
+        if (!message) {
+          callback?.({ error: 'Message not found' });
+          return;
+        }
+
+        const [membership] = await db
+          .select({ id: conversationMembers.id })
+          .from(conversationMembers)
+          .where(
+            and(
+              eq(conversationMembers.conversationId, message.conversationId),
+              eq(conversationMembers.userId, userId),
+            ),
+          )
+          .limit(1);
+
+        if (!membership) {
+          callback?.({ error: 'Not a member of this conversation' });
+          return;
+        }
+
+        if (await findReaction(messageId, userId, emoji)) {
+          callback?.({ error: 'Reaction already exists' });
+          return;
+        }
+
+        await addReaction(messageId, userId, emoji);
+        const reactions = await emitReactions(message.conversationId, messageId);
+        callback?.({ data: { reactions } });
+      } catch {
+        callback?.({ error: 'Failed to add reaction' });
+      }
+    },
+  );
+
+  socket.on(
+    'message:reaction:remove',
+    async (data: { messageId: string; emoji: string }, callback?: (response: unknown) => void) => {
+      try {
+        const parsed = reactionSchema.safeParse(data);
+        if (!parsed.success) {
+          callback?.({ error: 'Invalid message:reaction:remove payload' });
+          return;
+        }
+        const { messageId, emoji } = parsed.data;
+
+        const [message] = await db
+          .select({ conversationId: messages.conversationId })
+          .from(messages)
+          .where(eq(messages.id, messageId))
+          .limit(1);
+
+        if (!message) {
+          callback?.({ error: 'Message not found' });
+          return;
+        }
+
+        const [membership] = await db
+          .select({ id: conversationMembers.id })
+          .from(conversationMembers)
+          .where(
+            and(
+              eq(conversationMembers.conversationId, message.conversationId),
+              eq(conversationMembers.userId, userId),
+            ),
+          )
+          .limit(1);
+
+        if (!membership) {
+          callback?.({ error: 'Not a member of this conversation' });
+          return;
+        }
+
+        await removeReaction(messageId, userId, emoji);
+        const reactions = await emitReactions(message.conversationId, messageId);
+        callback?.({ data: { reactions } });
+      } catch {
+        callback?.({ error: 'Failed to remove reaction' });
+      }
+    },
+  );
 }
 
 export async function catchUpMessageDelivery(io: Server, userId: string) {
