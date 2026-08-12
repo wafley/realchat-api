@@ -16,6 +16,7 @@ export const messages = pgTable(
     content: text('content').notNull(),
     replyToId: uuid('reply_to_id'),
     isPinned: boolean('is_pinned').notNull().default(false),
+    pinnedAt: timestamp('pinned_at', { withTimezone: true }),
     isEdited: boolean('is_edited').notNull().default(false),
     isDeleted: boolean('is_deleted').notNull().default(false),
     editedAt: timestamp('edited_at', { withTimezone: true }),
