@@ -22,6 +22,15 @@ router.put(
   controller.editMessage,
 );
 router.delete('/:id/messages/:messageId', verifyJWT, controller.deleteMessage);
+router.put('/:id/messages/:messageId/pin', verifyJWT, controller.pinMessage);
+router.delete('/:id/messages/:messageId/pin', verifyJWT, controller.unpinMessage);
+router.post(
+  '/:id/messages/:messageId/forward',
+  verifyJWT,
+  validate(validator.forwardMessageSchema),
+  controller.forwardMessage,
+);
+router.post('/:id/read', verifyJWT, controller.markConversationRead);
 router.get('/:id', verifyJWT, controller.getConversationById);
 router.delete('/:id', verifyJWT, controller.leaveConversation);
 router.patch('/:id/clear', verifyJWT, controller.clearConversation);

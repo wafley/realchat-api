@@ -26,9 +26,22 @@ export const messageSeenSchema = z
   })
   .strict();
 
+export const forwardMessageSchema = z
+  .object({
+    targetConversationId: z.string().uuid(),
+  })
+  .strict();
+
 export const pinMessageSchema = z
   .object({
     messageId: z.string().uuid(),
+  })
+  .strict();
+
+export const reactionSchema = z
+  .object({
+    messageId: z.string().uuid(),
+    emoji: z.string().trim().min(1).max(10),
   })
   .strict();
 

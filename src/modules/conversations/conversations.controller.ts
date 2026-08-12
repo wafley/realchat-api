@@ -80,9 +80,11 @@ export async function getMessages(req: AuthRequest, res: Response, next: NextFun
 
 export async function getPinnedMessages(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    const { limit } = paginationSchema.parse(req.query);
     const result = await conversationService.getPinnedMessages(
       req.userId!,
       req.params.id as string,
+      limit,
     );
     res.status(200).json({ success: true, data: { messages: result } });
   } catch (error) {
@@ -110,6 +112,53 @@ export async function deleteMessage(req: AuthRequest, res: Response, next: NextF
     const { id, messageId } = messageIdSchema.parse(req.params);
     await conversationService.deleteMessage(req.userId!, id, messageId);
     res.status(200).json({ success: true, message: 'Message deleted' });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function pinMessage(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const { id, messageId } = messageIdSchema.parse(req.params);
+    const result = await conversationService.setMessagePinned(req.userId!, id, messageId, true);
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function unpinMessage(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const { id, messageId } = messageIdSchema.parse(req.params);
+    const result = await conversationService.setMessagePinned(req.userId!, id, messageId, false);
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function markConversationRead(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const result = await conversationService.markConversationAsRead(
+      req.userId!,
+      req.params.id as string,
+    );
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function forwardMessage(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const { id, messageId } = messageIdSchema.parse(req.params);
+    const result = await conversationService.forwardMessage(
+      req.userId!,
+      id,
+      messageId,
+      req.body.targetConversationId as string,
+    );
+    res.status(201).json({ success: true, data: result });
   } catch (error) {
     next(error);
   }

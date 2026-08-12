@@ -174,9 +174,13 @@ Ulang request yang gagal
 | Method | Endpoint | Body/Params | Response |
 |--------|----------|-------------|----------|
 | GET | `/conversations/:id/messages` | `?cursor=&limit=50` | 200 — paginated messages |
-| GET | `/conversations/:id/pinned` | `:id` (uuid) | 200 — `{ messages }` daftar pesan terpin |
+| GET | `/conversations/:id/pinned` | `?limit=50` | 200 — `{ messages }` daftar pesan terpin |
 | PUT | `/conversations/:id/messages/:messageId` | `{ content }` | 200 — edited message |
 | DELETE | `/conversations/:id/messages/:messageId` | — | 200 — deleted |
+| PUT | `/conversations/:id/messages/:messageId/pin` | — | 200 — `{ isPinned: true }` (broadcast `message:pin:updated`) |
+| DELETE | `/conversations/:id/messages/:messageId/pin` | — | 200 — `{ isPinned: false }` |
+| POST | `/conversations/:id/messages/:messageId/forward` | `{ targetConversationId }` | 201 — forwarded message (broadcast `message:new`) |
+| POST | `/conversations/:id/read` | — | 200 — `{ updated, seenAt }` tandai semua pesan masuk SEEN |
 
 > **`GET /conversations/:id/pinned`:** diurutkan `pinnedAt` DESC — pesan yang paling baru di-pin tampil pertama. `pinnedAt` hanya bergeser saat pin/unpin, sehingga mengedit pesan terpin tidak mengubah urutan. Unpin menyetel `pinnedAt` ke `null`. Pesan tipe `SYSTEM` tidak dapat di-pin dan dikecualikan dari daftar.
 
@@ -233,6 +237,19 @@ Ulang request yang gagal
 
 ---
 
+### Search & DM Search (Bearer required)
+
+| Method | Endpoint | Body/Params | Response |
+|--------|----------|-------------|----------|
+| GET | `/search/users` | `?q=&limit=50` | 200 — `{ users }` cari user by username/fullName (verified) |
+| GET | `/search/groups` | `?q=&limit=50` | 200 — `{ groups }` cari grup by nama + `memberCount` |
+| GET | `/search/messages` | `?q=&conversationId=&before=&after=&cursor=&limit=50` | 200 — `{ messages, nextCursor }` cari pesan (dalam satu conversation atau semua punya user) |
+| GET | `/dm/search` | `?q=&cursor=&limit=50` | 200 — `{ messages, nextCursor }` cari pesan di semua DM user → `[{ messageId, conversationId, conversationName, senderId, senderName, content, createdAt }]` |
+
+> **Pencarian** memakai `ILIKE` dengan escaping `\ % _`; `before`/`after` adalah filter timestamp ISO (`created_at`); hasil kosong = array kosong (bukan error).
+
+---
+
 ## Socket Events
 
 ### Connection
@@ -251,6 +268,8 @@ const socket = io('http://{{BACKEND_IP}}:3000', {
 | `message:delete` | `{ conversationId, messageId }` | Delete a message |
 | `message:pin` | `{ messageId }` | Pin a message (broadcast ke room) |
 | `message:unpin` | `{ messageId }` | Unpin a message (broadcast ke room) |
+| `message:reaction:add` | `{ messageId, emoji }` | Add a reaction (toggle via add/remove) |
+| `message:reaction:remove` | `{ messageId, emoji }` | Remove own reaction |
 | `typing:start` | `{ conversationId }` | User started typing |
 | `typing:stop` | `{ conversationId }` | User stopped typing |
 | `group:join` | `{ conversationId }` | Join a group room |
@@ -264,6 +283,7 @@ const socket = io('http://{{BACKEND_IP}}:3000', {
 | `message:status` | `{ messageId, status: 'DELIVERED' \| 'SEEN', userId, seenAt }` | Message delivery/read status for the sender |
 | `message:deleted` | `{ conversationId, messageId }` | Message deleted |
 | `message:pin:updated` | `{ conversationId, messageId, isPinned }` | Message pin/unpin state changed |
+| `message:reaction:updated` | `{ messageId, reactions: [{ emoji, userIds[] }] }` | Reaction state changed |
 | `typing:start` | `{ conversationId, userId }` | User started typing |
 | `typing:stop` | `{ conversationId, userId }` | User stopped typing |
 | `presence:online` | `{ userId }` | User came online |
