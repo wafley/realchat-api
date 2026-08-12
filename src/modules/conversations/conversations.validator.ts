@@ -52,7 +52,7 @@ export const paginationSchema = z.object({
 
 export const conversationListQuerySchema = z.object({
   search: z.string().trim().optional(),
-  cursor: z.iso.datetime().optional(),
+  cursor: z.string().min(1).optional(),
   limit: z.coerce.number().int().min(1).max(50).optional().default(20),
 });
 

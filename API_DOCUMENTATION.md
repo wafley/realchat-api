@@ -108,7 +108,7 @@ Ulang request yang gagal
 
 > **`GET /conversations` — chat list:**
 > - `search?` — filter by `conversations.name`, peer `username`/`fullName`, `customName`, atau isi last message.
-> - `cursor?` — ISO timestamp dari `nextCursor` halaman sebelumnya (keyset pagination).
+> - `cursor?` — **composite cursor** `base64url("<sortKey ISO>|<conversationId>")` dari `nextCursor` halaman sebelumnya (keyset pagination `(sortKey, id)`).
 > - `limit?` — 1–50, default 20.
 > - Diurutkan berdasarkan aktivitas terakhir (last message → dibuatnya conversation), terbaru dulu.
 > - `search` mencocokkan nama conversation, `username`/`full name` peer, `customName`, atau isi last message. Karakter wildcard (`%`, `_`) dianggap literal.

@@ -84,7 +84,7 @@ export async function findPrivateConversation(userId1: string, userId2: string) 
 
 export async function findConversationList(
   userId: string,
-  options: { search?: string; cursor?: string; limit: number },
+  options: { search?: string; cursor?: { sortKey: string; id: string }; limit: number },
 ) {
   const { search, cursor, limit } = options;
 
@@ -164,7 +164,10 @@ export async function findConversationList(
       )!,
     );
   }
-  if (cursor) conditions.push(lt(sortKey, cursor));
+  if (cursor)
+    conditions.push(
+      sql`(${sortKey}, ${conversations.id}) < (${cursor.sortKey}::timestamptz, ${cursor.id}::uuid)`,
+    );
 
   return db
     .select({

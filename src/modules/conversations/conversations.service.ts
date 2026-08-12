@@ -64,12 +64,32 @@ export async function createConversation(
   return conversation;
 }
 
+function encodeCompositeCursor(sortKey: Date, conversationId: string): string {
+  return Buffer.from(`${sortKey.toISOString()}|${conversationId}`).toString('base64url');
+}
+
+function decodeCompositeCursor(cursor: string): { sortKey: string; id: string } {
+  const decoded = Buffer.from(cursor, 'base64url').toString('utf8');
+  const separator = decoded.indexOf('|');
+  if (separator === -1) throw new BadRequestError('Invalid cursor format');
+
+  const sortKey = decoded.slice(0, separator);
+  const id = decoded.slice(separator + 1);
+  if (Number.isNaN(Date.parse(sortKey))) throw new BadRequestError('Invalid cursor sortKey');
+
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(id)) throw new BadRequestError('Invalid cursor id');
+
+  return { sortKey, id };
+}
+
 export async function getConversations(
   userId: string,
   options: { search?: string; cursor?: string; limit?: number },
 ) {
   const limit = options.limit ?? 20;
-  const rows = await repository.findConversationList(userId, { ...options, limit });
+  const cursor = options.cursor ? decodeCompositeCursor(options.cursor) : undefined;
+  const rows = await repository.findConversationList(userId, { ...options, cursor, limit });
 
   const hasMore = rows.length > limit;
   const page = hasMore ? rows.slice(0, limit) : rows;
@@ -121,7 +141,7 @@ export async function getConversations(
 
   const lastItem = page[page.length - 1];
   const nextCursor = hasMore
-    ? (lastItem.lastMessageCreatedAt ?? lastItem.createdAt).toISOString()
+    ? encodeCompositeCursor(lastItem.lastMessageCreatedAt ?? lastItem.createdAt, lastItem.id)
     : null;
 
   return { conversations, nextCursor };
