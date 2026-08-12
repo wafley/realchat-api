@@ -84,7 +84,7 @@ export async function findPrivateConversation(userId1: string, userId2: string) 
 
 export async function findConversationList(
   userId: string,
-  options: { search?: string; cursor?: string; limit: number },
+  options: { search?: string; cursor?: { sortKey: string; id: string }; limit: number },
 ) {
   const { search, cursor, limit } = options;
 
@@ -99,13 +99,23 @@ export async function findConversationList(
     .where(eq(conversationMembers.userId, userId))
     .as('mine');
 
+  const userConversations = db
+    .select({ conversationId: conversationMembers.conversationId })
+    .from(conversationMembers)
+    .where(eq(conversationMembers.userId, userId));
+
   const peer = db
     .select({
       conversationId: conversationMembers.conversationId,
       userId: conversationMembers.userId,
     })
     .from(conversationMembers)
-    .where(ne(conversationMembers.userId, userId))
+    .where(
+      and(
+        ne(conversationMembers.userId, userId),
+        inArray(conversationMembers.conversationId, userConversations),
+      ),
+    )
     .as('peer');
 
   const peerUser = aliasedTable(users, 'peer_user');
@@ -134,6 +144,7 @@ export async function findConversationList(
       value: count(conversationMembers.id).as('member_count'),
     })
     .from(conversationMembers)
+    .where(inArray(conversationMembers.conversationId, userConversations))
     .groupBy(conversationMembers.conversationId)
     .as('member_counts');
 
@@ -153,7 +164,10 @@ export async function findConversationList(
       )!,
     );
   }
-  if (cursor) conditions.push(lt(sortKey, cursor));
+  if (cursor)
+    conditions.push(
+      sql`(${sortKey}, ${conversations.id}) < (${cursor.sortKey}::timestamptz, ${cursor.id}::uuid)`,
+    );
 
   return db
     .select({
