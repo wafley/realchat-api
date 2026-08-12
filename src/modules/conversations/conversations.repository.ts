@@ -238,6 +238,7 @@ const messageColumns = {
   content: messages.content,
   replyToId: messages.replyToId,
   isPinned: messages.isPinned,
+  pinnedAt: messages.pinnedAt,
   isEdited: messages.isEdited,
   isDeleted: messages.isDeleted,
   editedAt: messages.editedAt,
@@ -314,9 +315,14 @@ export async function softDeleteMessage(id: string) {
 }
 
 export async function updateMessagePinned(id: string, isPinned: boolean) {
+  const now = new Date();
   const [message] = await db
     .update(messages)
-    .set({ isPinned, updatedAt: new Date() })
+    .set({
+      isPinned,
+      pinnedAt: isPinned ? now : null,
+      updatedAt: now,
+    })
     .where(eq(messages.id, id))
     .returning(messageColumns);
   return message || null;
@@ -334,5 +340,5 @@ export async function findPinnedMessagesByConversation(conversationId: string) {
         eq(messages.isDeleted, false),
       ),
     )
-    .orderBy(desc(messages.updatedAt));
+    .orderBy(desc(messages.pinnedAt), desc(messages.createdAt));
 }
