@@ -51,6 +51,18 @@ export async function leaveConversation(req: AuthRequest, res: Response, next: N
   }
 }
 
+export async function clearConversation(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const result = await conversationService.clearConversation(
+      req.userId!,
+      req.params.id as string,
+    );
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function getMessages(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const { cursor, limit } = paginationSchema.parse(req.query);

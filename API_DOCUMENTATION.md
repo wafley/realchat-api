@@ -104,6 +104,7 @@ Ulang request yang gagal
 | GET | `/conversations` | `?search=&cursor=&limit=20` | 200 — `{ conversations, nextCursor }` |
 | GET | `/conversations/:id` | `:id` (uuid) | 200 — detail + members |
 | DELETE | `/conversations/:id` | `:id` (uuid) | 200 — left conversation |
+| PATCH | `/conversations/:id/clear` | — | 200 — `{ clearedAt }` set `cleared_at` milik user (hide-per-user) |
 
 > **`GET /conversations` — chat list:**
 > - `search?` — filter by `conversations.name`, peer `username`/`fullName`, `customName`, atau isi last message.
