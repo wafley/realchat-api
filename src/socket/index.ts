@@ -113,7 +113,10 @@ export function initializeSocket(server: HttpServer) {
       onlineUsers.delete(userId);
       const now = new Date();
       for (const conversationId of userConversations) {
-        io.to(`conversation:${conversationId}`).emit('presence:offline', { userId });
+        io.to(`conversation:${conversationId}`).emit('presence:offline', {
+          userId,
+          lastSeenAt: now.toISOString(),
+        });
       }
       void db
         .update(users)

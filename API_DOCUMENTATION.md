@@ -266,7 +266,7 @@ const socket = io('http://{{BACKEND_IP}}:3000', {
 | `typing:start` | `{ conversationId, userId }` | User started typing |
 | `typing:stop` | `{ conversationId, userId }` | User stopped typing |
 | `presence:online` | `{ userId }` | User came online |
-| `presence:offline` | `{ userId }` | User went offline |
+| `presence:offline` | `{ userId, lastSeenAt }` | User went offline (with last seen time) |
 | `group:updated` | `{ id, name?, description? }` | Group info updated |
 | `group:avatar-updated` | `{ id, avatarUrl }` | Group avatar changed |
 | `group:member-added` | `{ conversationId, members }` | New members added |
