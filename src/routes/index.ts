@@ -5,6 +5,7 @@ import conversationRoutes from '../modules/conversations/conversations.route';
 import groupRoutes from '../modules/groups/groups.route';
 import contactRoutes from '../modules/contacts/contacts.route';
 import notificationRoutes from '../modules/notifications/notifications.route';
+import searchRoutes, { dmSearchRouter } from '../modules/search/search.route';
 
 const router = Router();
 
@@ -14,5 +15,7 @@ router.use('/conversations', conversationRoutes);
 router.use('/groups', groupRoutes);
 router.use('/contacts', contactRoutes);
 router.use('/notifications', notificationRoutes);
+router.use('/search', searchRoutes);
+router.use('/dm', dmSearchRouter);
 
 export default router;
