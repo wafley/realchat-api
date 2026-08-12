@@ -250,6 +250,8 @@ const socket = io('http://{{BACKEND_IP}}:3000', {
 | `message:delete` | `{ conversationId, messageId }` | Delete a message |
 | `message:pin` | `{ messageId }` | Pin a message (broadcast ke room) |
 | `message:unpin` | `{ messageId }` | Unpin a message (broadcast ke room) |
+| `message:reaction:add` | `{ messageId, emoji }` | Add a reaction (toggle via add/remove) |
+| `message:reaction:remove` | `{ messageId, emoji }` | Remove own reaction |
 | `typing:start` | `{ conversationId }` | User started typing |
 | `typing:stop` | `{ conversationId }` | User stopped typing |
 | `group:join` | `{ conversationId }` | Join a group room |
@@ -263,6 +265,7 @@ const socket = io('http://{{BACKEND_IP}}:3000', {
 | `message:status` | `{ messageId, status: 'DELIVERED' \| 'SEEN', userId, seenAt }` | Message delivery/read status for the sender |
 | `message:deleted` | `{ conversationId, messageId }` | Message deleted |
 | `message:pin:updated` | `{ conversationId, messageId, isPinned }` | Message pin/unpin state changed |
+| `message:reaction:updated` | `{ messageId, reactions: [{ emoji, userIds[] }] }` | Reaction state changed |
 | `typing:start` | `{ conversationId, userId }` | User started typing |
 | `typing:stop` | `{ conversationId, userId }` | User stopped typing |
 | `presence:online` | `{ userId }` | User came online |

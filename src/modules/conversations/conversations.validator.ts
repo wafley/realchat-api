@@ -32,6 +32,13 @@ export const pinMessageSchema = z
   })
   .strict();
 
+export const reactionSchema = z
+  .object({
+    messageId: z.string().uuid(),
+    emoji: z.string().trim().min(1).max(10),
+  })
+  .strict();
+
 export const paginationSchema = z.object({
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(100).optional().default(50),

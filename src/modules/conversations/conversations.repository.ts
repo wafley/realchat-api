@@ -3,6 +3,7 @@ import { conversations } from '../../db/schema/conversations';
 import { conversationMembers } from '../../db/schema/conversationMembers';
 import { messages } from '../../db/schema/messages';
 import { messageStatus } from '../../db/schema/messageStatus';
+import { messageReactions } from '../../db/schema/messageReactions';
 import { users } from '../../db/schema/users';
 import { contacts } from '../../db/schema/contacts';
 import { eq, and, desc, lt, ne, or, count, ilike, sql, aliasedTable, type SQL } from 'drizzle-orm';
@@ -342,4 +343,45 @@ export async function findPinnedMessagesByConversation(conversationId: string) {
       ),
     )
     .orderBy(desc(messages.pinnedAt), desc(messages.createdAt));
+}
+
+export async function findReaction(messageId: string, userId: string, emoji: string) {
+  const [row] = await db
+    .select({ id: messageReactions.id })
+    .from(messageReactions)
+    .where(
+      and(
+        eq(messageReactions.messageId, messageId),
+        eq(messageReactions.userId, userId),
+        eq(messageReactions.emoji, emoji),
+      ),
+    )
+    .limit(1);
+  return row || null;
+}
+
+export async function addReaction(messageId: string, userId: string, emoji: string) {
+  await db.insert(messageReactions).values({ messageId, userId, emoji });
+}
+
+export async function removeReaction(messageId: string, userId: string, emoji: string) {
+  await db
+    .delete(messageReactions)
+    .where(
+      and(
+        eq(messageReactions.messageId, messageId),
+        eq(messageReactions.userId, userId),
+        eq(messageReactions.emoji, emoji),
+      ),
+    );
+}
+
+export async function findReactionsByMessage(messageId: string) {
+  return db
+    .select({
+      emoji: messageReactions.emoji,
+      userId: messageReactions.userId,
+    })
+    .from(messageReactions)
+    .where(eq(messageReactions.messageId, messageId));
 }
