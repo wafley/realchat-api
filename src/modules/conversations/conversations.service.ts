@@ -205,6 +205,10 @@ export async function deleteMessage(userId: string, conversationId: string, mess
     throw new ForbiddenError('Message does not belong to this conversation');
 
   await repository.softDeleteMessage(messageId);
+
+  getIO()
+    .to(`conversation:${conversationId}`)
+    .emit('message:deleted', { conversationId, messageId });
 }
 
 export async function setMessagePinned(
@@ -316,14 +320,14 @@ export async function forwardMessage(
   return created;
 }
 
-export async function getPinnedMessages(userId: string, conversationId: string) {
+export async function getPinnedMessages(userId: string, conversationId: string, limit = 50) {
   const conversation = await repository.findConversationById(conversationId);
   if (!conversation) throw new NotFoundError('Conversation not found');
 
   const member = await repository.isMember(conversationId, userId);
   if (!member) throw new ForbiddenError('You are not a member of this conversation');
 
-  const rows = await repository.findPinnedMessagesByConversation(conversationId);
+  const rows = await repository.findPinnedMessagesByConversation(conversationId, limit);
 
   return rows.map(({ senderUsername, senderFullName, senderAvatarUrl, ...message }) => ({
     ...message,

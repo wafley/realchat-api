@@ -68,9 +68,11 @@ export async function getMessages(req: AuthRequest, res: Response, next: NextFun
 
 export async function getPinnedMessages(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    const { limit } = paginationSchema.parse(req.query);
     const result = await conversationService.getPinnedMessages(
       req.userId!,
       req.params.id as string,
+      limit,
     );
     res.status(200).json({ success: true, data: { messages: result } });
   } catch (error) {

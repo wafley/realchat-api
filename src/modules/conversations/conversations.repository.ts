@@ -341,7 +341,7 @@ export async function updateMessagePinned(id: string, isPinned: boolean) {
   return message || null;
 }
 
-export async function findPinnedMessagesByConversation(conversationId: string) {
+export async function findPinnedMessagesByConversation(conversationId: string, limit = 50) {
   return db
     .select({ ...messageColumns, ...pinnedMessageSenderColumns })
     .from(messages)
@@ -354,7 +354,8 @@ export async function findPinnedMessagesByConversation(conversationId: string) {
         ne(messages.type, 'SYSTEM'),
       ),
     )
-    .orderBy(desc(messages.pinnedAt), desc(messages.createdAt));
+    .orderBy(desc(messages.pinnedAt), desc(messages.createdAt))
+    .limit(limit);
 }
 
 export async function insertMessage(data: {

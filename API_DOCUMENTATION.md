@@ -173,7 +173,7 @@ Ulang request yang gagal
 | Method | Endpoint | Body/Params | Response |
 |--------|----------|-------------|----------|
 | GET | `/conversations/:id/messages` | `?cursor=&limit=50` | 200 — paginated messages |
-| GET | `/conversations/:id/pinned` | `:id` (uuid) | 200 — `{ messages }` daftar pesan terpin |
+| GET | `/conversations/:id/pinned` | `?limit=50` | 200 — `{ messages }` daftar pesan terpin |
 | PUT | `/conversations/:id/messages/:messageId` | `{ content }` | 200 — edited message |
 | DELETE | `/conversations/:id/messages/:messageId` | — | 200 — deleted |
 | PUT | `/conversations/:id/messages/:messageId/pin` | — | 200 — `{ isPinned: true }` (broadcast `message:pin:updated`) |
