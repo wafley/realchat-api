@@ -4,6 +4,7 @@ export { conversations } from './conversations';
 export { conversationMembers } from './conversationMembers';
 export { messages } from './messages';
 export { messageReactions } from './messageReactions';
+export { messageStars } from './messageStars';
 export { messageStatus } from './messageStatus';
 export { notifications } from './notifications';
 export { blockedUsers } from './blockedUsers';
