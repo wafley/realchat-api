@@ -187,14 +187,16 @@ export async function getMessages(
     cursor,
     limit,
     membership?.clearedAt,
+    userId,
   );
   const hasMore = rawMessages.length > limit;
   const messagesList = hasMore ? rawMessages.slice(0, limit) : rawMessages;
 
-  const messages = messagesList.map(({ statusRank, seenAt, ...message }) => ({
+  const messages = messagesList.map(({ statusRank, seenAt, starredAt, ...message }) => ({
     ...message,
     status: statusRank == null || statusRank < 1 ? 'SENT' : statusRank >= 2 ? 'SEEN' : 'DELIVERED',
     seenAt: seenAt ? seenAt.toISOString() : null,
+    starredAt: starredAt ? starredAt.toISOString() : null,
   }));
 
   return {
@@ -374,4 +376,77 @@ export async function getPinnedMessages(userId: string, conversationId: string, 
       avatarUrl: senderAvatarUrl,
     },
   }));
+}
+
+export async function setMessageStar(
+  userId: string,
+  conversationId: string,
+  messageId: string,
+  star: boolean,
+) {
+  const message = await repository.findMessageById(messageId);
+  if (!message) throw new NotFoundError('Message not found');
+  if (message.conversationId !== conversationId)
+    throw new ForbiddenError('Message does not belong to this conversation');
+
+  const member = await repository.isMember(conversationId, userId);
+  if (!member) throw new ForbiddenError('You are not a member of this conversation');
+
+  if (star) {
+    if (message.isDeleted) throw new BadRequestError('Cannot star a deleted message');
+    if (message.type === 'SYSTEM') throw new BadRequestError('Cannot star a system message');
+    await repository.addStar(messageId, userId);
+  } else {
+    await repository.removeStar(messageId, userId);
+  }
+
+  const row = await repository.findStar(messageId, userId);
+  const starredAt = star ? (row?.createdAt.toISOString() ?? new Date().toISOString()) : null;
+
+  getIO().to(`user:${userId}`).emit('message:star:updated', {
+    messageId,
+    isStarred: star,
+    starredAt,
+  });
+
+  return { starredAt };
+}
+
+export async function getStarredMessages(userId: string, cursor?: string, limit = 50) {
+  const rows = await repository.findStarredMessages(userId, cursor, limit);
+  const hasMore = rows.length > limit;
+  const page = hasMore ? rows.slice(0, limit) : rows;
+
+  const messages = page.map((row) => ({
+    id: row.id,
+    conversationId: row.conversationId,
+    senderId: row.senderId,
+    type: row.type,
+    content: row.content,
+    replyToId: row.replyToId,
+    isPinned: row.isPinned,
+    pinnedAt: row.pinnedAt,
+    isEdited: row.isEdited,
+    isDeleted: row.isDeleted,
+    editedAt: row.editedAt,
+    createdAt: row.createdAt,
+    isStarred: true,
+    starredAt: row.starredAt.toISOString(),
+    sender: {
+      username: row.senderUsername,
+      fullName: row.senderFullName,
+      avatarUrl: row.senderAvatarUrl,
+    },
+    conversation: {
+      id: row.conversationId,
+      type: row.conversationType,
+      name: row.conversationName,
+      avatarUrl: row.conversationAvatarUrl,
+    },
+  }));
+
+  return {
+    messages,
+    nextCursor: hasMore ? page[page.length - 1].starredAt.toISOString() : null,
+  };
 }

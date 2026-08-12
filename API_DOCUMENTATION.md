@@ -180,9 +180,14 @@ Ulang request yang gagal
 | PUT | `/conversations/:id/messages/:messageId/pin` | — | 200 — `{ isPinned: true }` (broadcast `message:pin:updated`) |
 | DELETE | `/conversations/:id/messages/:messageId/pin` | — | 200 — `{ isPinned: false }` |
 | POST | `/conversations/:id/messages/:messageId/forward` | `{ targetConversationId }` | 201 — forwarded message (broadcast `message:new`) |
+| PUT | `/conversations/:id/messages/:messageId/star` | — | 200 — `{ starredAt }` star pesan (per-user, privat) |
+| DELETE | `/conversations/:id/messages/:messageId/star` | — | 200 — `{ starredAt: null }` |
+| GET | `/messages/starred` | `?cursor=&limit=50` | 200 — `{ messages, nextCursor }` semua pesan ter-star milik user |
 | POST | `/conversations/:id/read` | — | 200 — `{ updated, seenAt }` tandai semua pesan masuk SEEN |
 
 > **`GET /conversations/:id/pinned`:** diurutkan `pinnedAt` DESC — pesan yang paling baru di-pin tampil pertama. `pinnedAt` hanya bergeser saat pin/unpin, sehingga mengedit pesan terpin tidak mengubah urutan. Unpin menyetel `pinnedAt` ke `null`. Pesan tipe `SYSTEM` tidak dapat di-pin dan dikecualikan dari daftar.
+>
+> **Star — `message_stars` (per-user, privat):** tiap message pada `GET /conversations/:id/messages` kini membawa `isStarred` (bool) dan `starredAt`. `GET /messages/starred` menampilkan detil pesan + `sender` + `conversation`, diurutkan `starredAt` DESC. Pesan `SYSTEM` / `isDeleted` tidak dapat di-star baru, tapi star yang sudah ada **tidak otomatis dihapus** — pesan yang di-*soft delete* / di-*clear* **tetap muncul** di daftar starred (`isDeleted: true`, `content: ""` → FE render placeholder). Event socket `message:star:updated` (`{ messageId, isStarred, starredAt }`) **hanya dikirim ke room `user:<userId>`** (privasi star).
 
 ### Groups (Bearer required)
 
@@ -270,6 +275,8 @@ const socket = io('http://{{BACKEND_IP}}:3000', {
 | `message:unpin` | `{ messageId }` | Unpin a message (broadcast ke room) |
 | `message:reaction:add` | `{ messageId, emoji }` | Add a reaction (toggle via add/remove) |
 | `message:reaction:remove` | `{ messageId, emoji }` | Remove own reaction |
+| `message:star` | `{ messageId }` | Star a message (privat, hanya user) |
+| `message:unstar` | `{ messageId }` | Unstar a message (privat, hanya user) |
 | `typing:start` | `{ conversationId }` | User started typing |
 | `typing:stop` | `{ conversationId }` | User stopped typing |
 | `group:join` | `{ conversationId }` | Join a group room |
@@ -284,6 +291,7 @@ const socket = io('http://{{BACKEND_IP}}:3000', {
 | `message:deleted` | `{ conversationId, messageId }` | Message deleted |
 | `message:pin:updated` | `{ conversationId, messageId, isPinned }` | Message pin/unpin state changed |
 | `message:reaction:updated` | `{ messageId, reactions: [{ emoji, userIds[] }] }` | Reaction state changed |
+| `message:star:updated` | `{ messageId, isStarred, starredAt }` | Star state changed (**hanya ke room `user:<userId>`** — privat) |
 | `typing:start` | `{ conversationId, userId }` | User started typing |
 | `typing:stop` | `{ conversationId, userId }` | User stopped typing |
 | `presence:online` | `{ userId }` | User came online |
