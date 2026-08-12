@@ -16,6 +16,8 @@ import {
   addReaction,
   removeReaction,
   findReactionsByMessage,
+  addStar,
+  removeStar,
 } from '../../modules/conversations/conversations.repository';
 import { env } from '../../config/env';
 import { createMessageRateLimiter, createFixedWindowLimiter } from '../rateLimit';
@@ -41,10 +43,16 @@ const reactionLimiter = createFixedWindowLimiter({
   max: 1,
 });
 
+const starLimiter = createFixedWindowLimiter({
+  windowMs: env.starThrottleMs,
+  max: 1,
+});
+
 const pruneInterval = setInterval(() => {
   seenLimiter.prune();
   pinLimiter.prune();
   reactionLimiter.prune();
+  starLimiter.prune();
 }, 60_000);
 pruneInterval.unref();
 
@@ -416,6 +424,93 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
       return;
     }
     void setMessagePinned(parsed.data.messageId, false, callback);
+  });
+
+  const handleStar = async (
+    data: { messageId: string },
+    star: boolean,
+    callback?: (response: unknown) => void,
+  ) => {
+    try {
+      if (!starLimiter.allow(userId)) {
+        callback?.({ error: 'Rate limit exceeded. Please slow down.' });
+        return;
+      }
+
+      const parsed = pinMessageSchema.safeParse(data);
+      if (!parsed.success) {
+        callback?.({
+          error: star ? 'Invalid message:star payload' : 'Invalid message:unstar payload',
+        });
+        return;
+      }
+      const { messageId } = parsed.data;
+
+      const [message] = await db
+        .select({
+          conversationId: messages.conversationId,
+          type: messages.type,
+          isDeleted: messages.isDeleted,
+        })
+        .from(messages)
+        .where(eq(messages.id, messageId))
+        .limit(1);
+
+      if (!message) {
+        callback?.({ error: 'Message not found' });
+        return;
+      }
+
+      const [membership] = await db
+        .select({ id: conversationMembers.id })
+        .from(conversationMembers)
+        .where(
+          and(
+            eq(conversationMembers.conversationId, message.conversationId),
+            eq(conversationMembers.userId, userId),
+          ),
+        )
+        .limit(1);
+
+      if (!membership) {
+        callback?.({ error: 'Not a member of this conversation' });
+        return;
+      }
+
+      if (star && message.isDeleted) {
+        callback?.({ error: 'Cannot star a deleted message' });
+        return;
+      }
+      if (star && message.type === 'SYSTEM') {
+        callback?.({ error: 'Cannot star a system message' });
+        return;
+      }
+
+      if (star) {
+        await addStar(messageId, userId);
+      } else {
+        await removeStar(messageId, userId);
+      }
+
+      const starredAt = star ? new Date().toISOString() : null;
+      io.to(`user:${userId}`).emit('message:star:updated', {
+        messageId,
+        isStarred: star,
+        starredAt,
+      });
+
+      callback?.({ data: { messageId, isStarred: star, starredAt } });
+    } catch {
+      callback?.({ error: 'Failed to update message star' });
+    }
+  };
+
+  socket.on('message:star', (data: { messageId: string }, callback) => {
+    void handleStar(data, true, callback);
+  });
+
+  socket.on('message:unstar', (data: { messageId: string }, callback) => {
+    void handleStar(data, false, callback);
   });
 
   const emitReactions = (conversationId: string, messageId: string) =>
