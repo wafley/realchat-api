@@ -2,6 +2,7 @@ import * as repository from './conversations.repository';
 import { findUserById } from '../auth/auth.repository';
 import { NotFoundError, BadRequestError, ForbiddenError } from '../../utils/errors';
 import { getIO } from '../../socket/index';
+import { onlineUsers } from '../../socket/onlineUsers';
 
 export async function createConversation(
   userId: string,
@@ -204,6 +205,115 @@ export async function deleteMessage(userId: string, conversationId: string, mess
     throw new ForbiddenError('Message does not belong to this conversation');
 
   await repository.softDeleteMessage(messageId);
+}
+
+export async function setMessagePinned(
+  userId: string,
+  conversationId: string,
+  messageId: string,
+  isPinned: boolean,
+) {
+  const message = await repository.findMessageById(messageId);
+  if (!message) throw new NotFoundError('Message not found');
+  if (message.conversationId !== conversationId)
+    throw new ForbiddenError('Message does not belong to this conversation');
+
+  const member = await repository.isMember(conversationId, userId);
+  if (!member) throw new ForbiddenError('You are not a member of this conversation');
+
+  if (isPinned && message.isDeleted) throw new BadRequestError('Cannot pin a deleted message');
+  if (isPinned && message.type === 'SYSTEM')
+    throw new BadRequestError('Cannot pin a system message');
+
+  await repository.updateMessagePinned(messageId, isPinned);
+
+  getIO()
+    .to(`conversation:${conversationId}`)
+    .emit('message:pin:updated', { conversationId, messageId, isPinned });
+
+  return { isPinned };
+}
+
+export async function markConversationAsRead(userId: string, conversationId: string) {
+  const conversation = await repository.findConversationById(conversationId);
+  if (!conversation) throw new NotFoundError('Conversation not found');
+
+  const member = await repository.isMember(conversationId, userId);
+  if (!member) throw new ForbiddenError('You are not a member of this conversation');
+
+  const targetIds = await repository.findIncomingMessageIdsByConversation(conversationId, userId);
+  if (targetIds.length === 0) return { updated: 0, seenAt: null };
+
+  const now = new Date();
+  const changedIds = await repository.markMessagesSeen(userId, targetIds, now);
+
+  if (changedIds.length > 0) {
+    const senders = await repository.findMessageSenders(changedIds);
+    for (const { id, senderId } of senders) {
+      getIO().to(`user:${senderId}`).emit('message:status', {
+        messageId: id,
+        status: 'SEEN',
+        userId,
+        seenAt: now.toISOString(),
+      });
+    }
+  }
+
+  return { updated: changedIds.length, seenAt: now.toISOString() };
+}
+
+export async function forwardMessage(
+  userId: string,
+  sourceConversationId: string,
+  messageId: string,
+  targetConversationId: string,
+) {
+  const message = await repository.findMessageById(messageId);
+  if (!message) throw new NotFoundError('Message not found');
+  if (message.conversationId !== sourceConversationId)
+    throw new ForbiddenError('Message does not belong to this conversation');
+
+  const [sourceMember, targetMember] = await Promise.all([
+    repository.isMember(sourceConversationId, userId),
+    repository.isMember(targetConversationId, userId),
+  ]);
+  if (!sourceMember) throw new ForbiddenError('You are not a member of this conversation');
+  if (!targetMember) throw new ForbiddenError('You are not a member of the target conversation');
+
+  const created = await repository.insertMessage({
+    conversationId: targetConversationId,
+    senderId: userId,
+    content: message.content,
+    type: message.type,
+  });
+
+  await repository.insertMessageStatuses([{ messageId: created.id, userId, status: 'SENT' }]);
+
+  const memberIds = await repository.findConversationMemberIds(targetConversationId);
+  const recipientRows = memberIds
+    .filter((id) => id !== userId)
+    .map((id) => ({
+      messageId: created.id,
+      userId: id,
+      status: onlineUsers.get(id)?.size ? ('DELIVERED' as const) : ('SENT' as const),
+    }));
+
+  await repository.insertMessageStatuses(recipientRows);
+
+  for (const row of recipientRows) {
+    if (row.status === 'DELIVERED') {
+      getIO().to(`user:${userId}`).emit('message:status', {
+        messageId: created.id,
+        status: 'DELIVERED',
+        userId: row.userId,
+        seenAt: null,
+      });
+    }
+  }
+
+  getIO().to(`conversation:${targetConversationId}`).emit('message:new', created);
+
+  return created;
 }
 
 export async function getPinnedMessages(userId: string, conversationId: string) {
