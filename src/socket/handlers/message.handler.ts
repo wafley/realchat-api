@@ -315,6 +315,7 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
           id: messages.id,
           conversationId: messages.conversationId,
           isDeleted: messages.isDeleted,
+          type: messages.type,
         })
         .from(messages)
         .where(eq(messages.id, messageId))
@@ -343,6 +344,11 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
 
       if (message.isDeleted && isPinned) {
         callback?.({ error: 'Cannot pin a deleted message' });
+        return;
+      }
+
+      if (message.type === 'SYSTEM' && isPinned) {
+        callback?.({ error: 'Cannot pin a system message' });
         return;
       }
 
