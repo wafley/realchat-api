@@ -440,10 +440,13 @@ export async function findIncomingMessageIdsByConversation(conversationId: strin
 }
 
 export async function markMessagesSeen(userId: string, messageIds: string[], seenAt: Date) {
+  const messageIdIn = (ids: string[]) =>
+    sql`${messageStatus.messageId} = ANY(${`{${ids.join(',')}}`}::uuid[])`;
+
   const existingRows = await db
     .select({ messageId: messageStatus.messageId })
     .from(messageStatus)
-    .where(and(eq(messageStatus.userId, userId), inArray(messageStatus.messageId, messageIds)));
+    .where(and(eq(messageStatus.userId, userId), messageIdIn(messageIds)));
   const existingIds = new Set(existingRows.map((row) => row.messageId));
 
   const updated = await db
@@ -453,7 +456,7 @@ export async function markMessagesSeen(userId: string, messageIds: string[], see
       and(
         eq(messageStatus.userId, userId),
         ne(messageStatus.status, 'SEEN'),
-        inArray(messageStatus.messageId, messageIds),
+        messageIdIn(messageIds),
       ),
     )
     .returning({ messageId: messageStatus.messageId });
