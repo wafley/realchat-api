@@ -338,6 +338,7 @@ export async function findPinnedMessagesByConversation(conversationId: string) {
         eq(messages.conversationId, conversationId),
         eq(messages.isPinned, true),
         eq(messages.isDeleted, false),
+        ne(messages.type, 'SYSTEM'),
       ),
     )
     .orderBy(desc(messages.pinnedAt), desc(messages.createdAt));
