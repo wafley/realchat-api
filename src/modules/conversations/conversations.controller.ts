@@ -163,3 +163,33 @@ export async function forwardMessage(req: AuthRequest, res: Response, next: Next
     next(error);
   }
 }
+
+export async function starMessage(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const { id, messageId } = messageIdSchema.parse(req.params);
+    const result = await conversationService.setMessageStar(req.userId!, id, messageId, true);
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function unstarMessage(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const { id, messageId } = messageIdSchema.parse(req.params);
+    const result = await conversationService.setMessageStar(req.userId!, id, messageId, false);
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getStarredMessages(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const { cursor, limit } = paginationSchema.parse(req.query);
+    const result = await conversationService.getStarredMessages(req.userId!, cursor, limit);
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+}

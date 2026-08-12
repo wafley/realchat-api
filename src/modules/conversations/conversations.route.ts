@@ -30,9 +30,16 @@ router.post(
   validate(validator.forwardMessageSchema),
   controller.forwardMessage,
 );
+router.put('/:id/messages/:messageId/star', verifyJWT, controller.starMessage);
+router.delete('/:id/messages/:messageId/star', verifyJWT, controller.unstarMessage);
 router.post('/:id/read', verifyJWT, controller.markConversationRead);
 router.get('/:id', verifyJWT, controller.getConversationById);
 router.delete('/:id', verifyJWT, controller.leaveConversation);
 router.patch('/:id/clear', verifyJWT, controller.clearConversation);
 
+const starredRouter = Router();
+
+starredRouter.get('/starred', verifyJWT, controller.getStarredMessages);
+
 export default router;
+export { starredRouter };

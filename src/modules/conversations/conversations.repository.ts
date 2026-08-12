@@ -4,6 +4,7 @@ import { conversationMembers } from '../../db/schema/conversationMembers';
 import { messages } from '../../db/schema/messages';
 import { messageStatus } from '../../db/schema/messageStatus';
 import { messageReactions } from '../../db/schema/messageReactions';
+import { messageStars } from '../../db/schema/messageStars';
 import { users } from '../../db/schema/users';
 import { contacts } from '../../db/schema/contacts';
 import {
@@ -299,6 +300,7 @@ export async function findMessagesByConversationId(
   cursor?: string,
   limit = 50,
   clearedAt?: Date | null,
+  userId?: string,
 ) {
   const conditions = [eq(messages.conversationId, conversationId)];
   if (clearedAt) conditions.push(gt(messages.createdAt, clearedAt));
@@ -319,14 +321,28 @@ export async function findMessagesByConversationId(
     .groupBy(messageStatus.messageId)
     .as('status_agg');
 
-  return db
+  const star = userId
+    ? db
+        .select({ messageId: messageStars.messageId, starredAt: messageStars.createdAt })
+        .from(messageStars)
+        .where(eq(messageStars.userId, userId))
+        .as('star_agg')
+    : undefined;
+
+  const query = db
     .select({
       ...messageColumns,
       statusRank: statusAgg.statusRank,
       seenAt: statusAgg.seenAt,
+      isStarred: star ? sql<boolean>`${star.messageId} IS NOT NULL` : sql<boolean>`false`,
+      starredAt: star ? star.starredAt : sql<Date | null>`NULL`,
     })
     .from(messages)
-    .leftJoin(statusAgg, eq(statusAgg.messageId, messages.id))
+    .leftJoin(statusAgg, eq(statusAgg.messageId, messages.id));
+
+  if (star) query.leftJoin(star, eq(star.messageId, messages.id));
+
+  return query
     .where(and(...conditions))
     .orderBy(desc(messages.createdAt))
     .limit(limit + 1);
@@ -483,6 +499,71 @@ export async function findMessageSenders(messageIds: string[]) {
     .select({ id: messages.id, senderId: messages.senderId })
     .from(messages)
     .where(inArray(messages.id, messageIds));
+}
+
+export async function addStar(messageId: string, userId: string) {
+  await db.insert(messageStars).values({ messageId, userId }).onConflictDoNothing();
+}
+
+export async function removeStar(messageId: string, userId: string) {
+  await db
+    .delete(messageStars)
+    .where(and(eq(messageStars.messageId, messageId), eq(messageStars.userId, userId)));
+}
+
+export async function findStarredMessages(userId: string, cursor?: string, limit = 50) {
+  const stars = db
+    .select({
+      messageId: messageStars.messageId,
+      starredAt: messageStars.createdAt,
+    })
+    .from(messageStars)
+    .where(eq(messageStars.userId, userId))
+    .as('stars');
+
+  const senderUser = aliasedTable(users, 'star_sender');
+
+  const conditions: SQL[] = [];
+  if (cursor) conditions.push(lt(stars.starredAt, new Date(cursor)));
+
+  return db
+    .select({
+      id: messages.id,
+      conversationId: messages.conversationId,
+      senderId: messages.senderId,
+      type: messages.type,
+      content: messages.content,
+      replyToId: messages.replyToId,
+      isPinned: messages.isPinned,
+      pinnedAt: messages.pinnedAt,
+      isEdited: messages.isEdited,
+      isDeleted: messages.isDeleted,
+      editedAt: messages.editedAt,
+      createdAt: messages.createdAt,
+      starredAt: stars.starredAt,
+      senderUsername: senderUser.username,
+      senderFullName: senderUser.fullName,
+      senderAvatarUrl: senderUser.avatarUrl,
+      conversationType: conversations.type,
+      conversationName: conversations.name,
+      conversationAvatarUrl: conversations.avatarUrl,
+    })
+    .from(stars)
+    .innerJoin(messages, eq(messages.id, stars.messageId))
+    .innerJoin(senderUser, eq(senderUser.id, messages.senderId))
+    .innerJoin(conversations, eq(conversations.id, messages.conversationId))
+    .where(and(...conditions))
+    .orderBy(desc(stars.starredAt), desc(messages.createdAt))
+    .limit(limit + 1);
+}
+
+export async function findStar(messageId: string, userId: string) {
+  const [row] = await db
+    .select({ createdAt: messageStars.createdAt })
+    .from(messageStars)
+    .where(and(eq(messageStars.messageId, messageId), eq(messageStars.userId, userId)))
+    .limit(1);
+  return row || null;
 }
 
 export async function findReaction(messageId: string, userId: string, emoji: string) {
