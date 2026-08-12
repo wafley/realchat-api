@@ -99,13 +99,23 @@ export async function findConversationList(
     .where(eq(conversationMembers.userId, userId))
     .as('mine');
 
+  const userConversations = db
+    .select({ conversationId: conversationMembers.conversationId })
+    .from(conversationMembers)
+    .where(eq(conversationMembers.userId, userId));
+
   const peer = db
     .select({
       conversationId: conversationMembers.conversationId,
       userId: conversationMembers.userId,
     })
     .from(conversationMembers)
-    .where(ne(conversationMembers.userId, userId))
+    .where(
+      and(
+        ne(conversationMembers.userId, userId),
+        inArray(conversationMembers.conversationId, userConversations),
+      ),
+    )
     .as('peer');
 
   const peerUser = aliasedTable(users, 'peer_user');
@@ -134,6 +144,7 @@ export async function findConversationList(
       value: count(conversationMembers.id).as('member_count'),
     })
     .from(conversationMembers)
+    .where(inArray(conversationMembers.conversationId, userConversations))
     .groupBy(conversationMembers.conversationId)
     .as('member_counts');
 

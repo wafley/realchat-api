@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, timestamp, unique } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, timestamp, unique, index } from 'drizzle-orm/pg-core';
 import { users } from './users';
 import { conversations } from './conversations';
 
@@ -19,5 +19,6 @@ export const conversationMembers = pgTable(
   },
   (table) => ({
     unq: unique().on(table.conversationId, table.userId),
+    userIdx: index('conversation_members_user_id_idx').on(table.userId),
   }),
 );
