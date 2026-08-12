@@ -177,6 +177,8 @@ Ulang request yang gagal
 | PUT | `/conversations/:id/messages/:messageId` | `{ content }` | 200 — edited message |
 | DELETE | `/conversations/:id/messages/:messageId` | — | 200 — deleted |
 
+> **`GET /conversations/:id/pinned`:** diurutkan `pinnedAt` DESC — pesan yang paling baru di-pin tampil pertama. `pinnedAt` hanya bergeser saat pin/unpin, sehingga mengedit pesan terpin tidak mengubah urutan. Unpin menyetel `pinnedAt` ke `null`.
+
 ### Groups (Bearer required)
 
 | Method | Endpoint | Body/Params | Response |

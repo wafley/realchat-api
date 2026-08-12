@@ -78,6 +78,13 @@
       "when": 1786412017696,
       "tag": "0010_confused_shatterstar",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1786497002079,
+      "tag": "0011_wild_stryfe",
+      "breakpoints": true
     }
   ]
 }
