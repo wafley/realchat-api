@@ -2,8 +2,13 @@ import { Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
 import { MulterError } from 'multer';
 import { AppError } from '../utils/errors';
+import { unlinkQuietly } from '../utils/cleanup';
 
-export function errorHandler(err: Error, _req: Request, res: Response, _next: NextFunction) {
+export function errorHandler(err: Error, req: Request, res: Response, _next: NextFunction) {
+  if (req.file?.path) {
+    void unlinkQuietly(req.file.path);
+  }
+
   if (err instanceof SyntaxError && 'body' in err) {
     res.status(400).json({ success: false, message: 'Invalid JSON in request body' });
     return;

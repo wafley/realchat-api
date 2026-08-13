@@ -14,7 +14,7 @@ import { getIO } from '../../socket/index';
 import { createAndEmitMany } from '../notifications/notifications.service';
 import { MAX_GROUP_MEMBERS } from '../../config/constants';
 import { env } from '../../config/env';
-import { promises as fs } from 'fs';
+import { unlinkQuietly } from '../../utils/cleanup';
 import path from 'path';
 
 function displayName(user: { fullName?: string | null; username?: string } | null | undefined) {
@@ -130,12 +130,18 @@ export async function updateGroup(
 }
 
 export async function updateAvatar(userId: string, groupId: string, file: Express.Multer.File) {
-  const { members } = await validateGroupAdmin(userId, groupId);
+  const { conversation, members } = await validateGroupAdmin(userId, groupId);
   const avatarUrl = `/uploads/${file.filename}`;
   const updated = await repository.updateGroupAvatar(groupId, avatarUrl);
   members.forEach((m) => {
     getIO().to(`user:${m.userId}`).emit('group:avatar-updated', updated);
   });
+  if (conversation.avatarUrl) {
+    const filename = conversation.avatarUrl.split('/').pop();
+    if (filename) {
+      await unlinkQuietly(path.join(env.uploadDir, filename));
+    }
+  }
   return updated;
 }
 
@@ -332,7 +338,7 @@ export async function leaveGroup(userId: string, groupId: string) {
     if (conversation.avatarUrl) {
       const filename = conversation.avatarUrl.split('/').pop();
       if (filename) {
-        await fs.unlink(path.join(env.uploadDir, filename)).catch(() => undefined);
+        await unlinkQuietly(path.join(env.uploadDir, filename));
       }
     }
     return;
@@ -371,7 +377,7 @@ export async function dismissGroup(userId: string, groupId: string) {
   if (conversation.avatarUrl) {
     const filename = conversation.avatarUrl.split('/').pop();
     if (filename) {
-      await fs.unlink(path.join(env.uploadDir, filename)).catch(() => undefined);
+      await unlinkQuietly(path.join(env.uploadDir, filename));
     }
   }
 }
