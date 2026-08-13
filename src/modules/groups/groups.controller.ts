@@ -64,3 +64,12 @@ export async function leaveGroup(req: AuthRequest, res: Response, next: NextFunc
     next(error);
   }
 }
+
+export async function dismissGroup(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    await groupService.dismissGroup(req.userId!, req.params.id as string);
+    res.status(200).json({ success: true, message: 'Group dismissed' });
+  } catch (error) {
+    next(error);
+  }
+}

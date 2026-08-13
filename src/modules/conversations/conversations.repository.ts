@@ -7,6 +7,7 @@ import { messageReactions } from '../../db/schema/messageReactions';
 import { messageStars } from '../../db/schema/messageStars';
 import { users } from '../../db/schema/users';
 import { contacts } from '../../db/schema/contacts';
+import { notifications } from '../../db/schema/notifications';
 import {
   eq,
   and,
@@ -397,6 +398,26 @@ export async function setMutedUntil(
     )
     .returning({ mutedUntil: conversationMembers.mutedUntil });
   return row || null;
+}
+
+export async function deleteConversation(conversationId: string) {
+  await db.transaction(async (tx) => {
+    const messageIds = await tx
+      .select({ id: messages.id })
+      .from(messages)
+      .where(eq(messages.conversationId, conversationId));
+
+    if (messageIds.length > 0) {
+      await tx.delete(notifications).where(
+        inArray(
+          notifications.messageId,
+          messageIds.map((m) => m.id),
+        ),
+      );
+    }
+    await tx.delete(notifications).where(eq(notifications.conversationId, conversationId));
+    await tx.delete(conversations).where(eq(conversations.id, conversationId));
+  });
 }
 
 export async function findMessageById(id: string) {

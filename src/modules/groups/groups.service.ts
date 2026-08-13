@@ -6,9 +6,14 @@ import {
   addMembers as addConversationMembers,
   removeMember as removeConversationMember,
   insertMessage,
+  deleteConversation,
 } from '../conversations/conversations.repository';
 import { NotFoundError, BadRequestError, ForbiddenError } from '../../utils/errors';
 import { getIO } from '../../socket/index';
+import { MAX_GROUP_MEMBERS } from '../../config/constants';
+import { env } from '../../config/env';
+import { promises as fs } from 'fs';
+import path from 'path';
 
 function displayName(user: { fullName?: string | null; username?: string } | null | undefined) {
   return user?.fullName || user?.username || 'Unknown';
@@ -18,6 +23,13 @@ async function emitSystemMessage(conversationId: string, senderId: string, conte
   const message = await insertMessage({ conversationId, senderId, content, type: 'SYSTEM' });
   getIO().to(`conversation:${conversationId}`).emit('message:new', message);
   return message;
+}
+
+async function forceLeaveConversationRoom(userId: string, conversationId: string) {
+  const sockets = await getIO().in(`user:${userId}`).fetchSockets();
+  for (const socket of sockets) {
+    socket.leave(`conversation:${conversationId}`);
+  }
 }
 
 async function validateGroupAdmin(userId: string, groupId: string) {
@@ -74,6 +86,8 @@ export async function addMembers(userId: string, groupId: string, userIds: strin
   const newIds = userIds.filter((id) => !existingIds.has(id));
 
   if (newIds.length === 0) throw new BadRequestError('All users are already members');
+  if (members.length + newIds.length > MAX_GROUP_MEMBERS)
+    throw new BadRequestError(`Group cannot have more than ${MAX_GROUP_MEMBERS} members`);
 
   const newUsers: Awaited<ReturnType<typeof findUserById>>[] = [];
   for (const id of newIds) {
@@ -151,6 +165,8 @@ export async function removeMember(userId: string, groupId: string, targetUserId
     userId,
     `${displayName(actor)} removed ${displayName(targetUser)}`,
   );
+
+  await forceLeaveConversationRoom(targetUserId, groupId);
 }
 
 export async function changeRole(
@@ -233,4 +249,26 @@ export async function leaveGroup(userId: string, groupId: string) {
 
   const leaver = await findUserById(userId);
   await emitSystemMessage(groupId, userId, `${displayName(leaver)} left the group`);
+
+  await forceLeaveConversationRoom(userId, groupId);
+}
+
+export async function dismissGroup(userId: string, groupId: string) {
+  const { conversation, members } = await validateGroupAdmin(userId, groupId);
+
+  await deleteConversation(groupId);
+
+  const io = getIO();
+  members.forEach((m) => {
+    io.to(`user:${m.userId}`).emit('group:dismissed', { conversationId: groupId });
+  });
+  const room = `conversation:${groupId}`;
+  io.in(room).socketsLeave(room);
+
+  if (conversation.avatarUrl) {
+    const filename = conversation.avatarUrl.split('/').pop();
+    if (filename) {
+      await fs.unlink(path.join(env.uploadDir, filename)).catch(() => undefined);
+    }
+  }
 }

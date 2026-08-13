@@ -205,10 +205,16 @@ Ulang request yang gagal
 | DELETE | `/groups/:id/members/:userId` | `:userId` (uuid) | 200 — removed |
 | PUT | `/groups/:id/members/:userId/role` | `{ role }` | 200 — updated |
 | DELETE | `/groups/:id/leave` | — | 200 — left group |
+| DELETE | `/groups/:id` | — | 200 — group dismissed (admin only, permanent) |
 
 > **SYSTEM messages otomatis:** event grup tertentu menghasilkan pesan tipe `SYSTEM` (broadcast via `message:new`):
 > - tambah member → `<nama> added <nama-nama>` · hapus member → `<nama> removed <target>` · keluar grup → `<nama> left the group` · ubah role → `<nama> made <target> admin` / `<nama> demoted <target> to member` · rename → `<nama> changed the group name to '<name>'`.
 > - Pesan `SYSTEM` **tidak memiliki `message_status`** → **tidak menambah `unreadCount`**; tidak bisa di-pin/star (ditolak 400); tetap tampil normal di thread chat (`sender` = aktor aksi).
+>
+> **Limit & pembubaran:**
+> - `MAX_GROUP_MEMBERS = 50` — total member grup (saat create maupun add) dibatasi.
+> - `DELETE /groups/:id` (dismiss, admin only, permanen): hapus conversation beserta messages/members/status/reactions/stars/notifications (cascade DB); semua socket dipaksa keluar room; file avatar dihapus; broadcast `group:dismissed` `{ conversationId }` ke semua member.
+> - Socket member yang di-kick (remove) atau leave dipaksa keluar room `conversation:<id>` — tidak akan menerima pesan setelahnya.
 
 ### Contacts (Bearer required)
 

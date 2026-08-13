@@ -3,6 +3,7 @@ import { findUserById } from '../auth/auth.repository';
 import { NotFoundError, BadRequestError, ForbiddenError } from '../../utils/errors';
 import { getIO } from '../../socket/index';
 import { onlineUsers } from '../../socket/onlineUsers';
+import { MAX_GROUP_MEMBERS } from '../../config/constants';
 
 export async function createConversation(
   userId: string,
@@ -40,6 +41,8 @@ export async function createConversation(
 
   const allIds = [userId, ...(data.participantIds || [])];
   if (allIds.length < 3) throw new BadRequestError('Group must have at least 3 members');
+  if (allIds.length > MAX_GROUP_MEMBERS)
+    throw new BadRequestError(`Group cannot have more than ${MAX_GROUP_MEMBERS} members`);
 
   for (const id of allIds) {
     const user = await findUserById(id);
