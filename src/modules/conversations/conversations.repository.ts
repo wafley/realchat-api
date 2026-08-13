@@ -362,6 +362,24 @@ export async function clearConversation(conversationId: string, userId: string) 
   return row || null;
 }
 
+export async function setMutedUntil(
+  conversationId: string,
+  userId: string,
+  mutedUntil: Date | null,
+) {
+  const [row] = await db
+    .update(conversationMembers)
+    .set({ mutedUntil })
+    .where(
+      and(
+        eq(conversationMembers.conversationId, conversationId),
+        eq(conversationMembers.userId, userId),
+      ),
+    )
+    .returning({ mutedUntil: conversationMembers.mutedUntil });
+  return row || null;
+}
+
 export async function findMessageById(id: string) {
   const [message] = await db
     .select(messageColumns)

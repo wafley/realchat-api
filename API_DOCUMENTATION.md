@@ -105,6 +105,8 @@ Ulang request yang gagal
 | GET | `/conversations/:id` | `:id` (uuid) | 200 — detail + members |
 | DELETE | `/conversations/:id` | `:id` (uuid) | 200 — left conversation |
 | PATCH | `/conversations/:id/clear` | — | 200 — `{ clearedAt }` set `cleared_at` milik user (hide-per-user) |
+| PUT | `/conversations/:id/mute` | `{ until? }` (ISO datetime) | 200 — `{ mutedUntil }` mute conversation (per-user) |
+| DELETE | `/conversations/:id/mute` | — | 200 — `{ mutedUntil: null }` unmute |
 
 > **`GET /conversations` — chat list:**
 > - `search?` — filter by `conversations.name`, peer `username`/`fullName`, `customName`, atau isi last message.
@@ -115,6 +117,8 @@ Ulang request yang gagal
 > - `displayName`: **PRIVATE** = `customName` → full name peer → username peer → `'Unknown'`; **GROUP** = `name`.
 > - `lastMessage.sender` hanya untuk **PRIVATE**; `isOnline`/`lastSeenAt` hanya untuk **PRIVATE**; `memberCount` hanya untuk **GROUP**; `myRole`/`mutedUntil`/`clearedAt` dari membership milikku.
 > - `unreadCount` belum ada (menyusul di fitur read receipts).
+>
+> **Mute (`PUT/DELETE /conversations/:id/mute`):** per-user, hanya mengubah membership sendiri. `PUT` dengan `until` (ISO, harus di masa depan) → `mutedUntil` = waktu tersebut; **tanpa `until` = mute permanen** (dipetakan ke `now() + 10 tahun` — FE harus memperlakukan `mutedUntil` yang jauh ke masa depan sebagai **"permanen"**, bukan jadwal auto-unmute). `DELETE` mengembalikan `mutedUntil` ke `null` (unmuted). Belum ada enforcement notifikasi push (menyusul di fitur notifikasi); badge unread tetap dihitung untuk conversation yang di-mute.
 >
 > **Contoh response `GET /conversations`:**
 > ```json
