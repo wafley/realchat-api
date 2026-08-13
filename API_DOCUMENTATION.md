@@ -202,20 +202,22 @@ Ulang request yang gagal
 | POST | `/groups` | multipart: `name`, `participantIds` (JSON string array, min 2), `description?`, `avatar?` (file) | 201 — created group (creator = ADMIN) |
 | PUT | `/groups/:id` | `{ name?, description? }` | 200 — updated group |
 | PUT | `/groups/:id/avatar` | `avatar` (multipart file) | 200 — updated group |
-| POST | `/groups/:id/members` | `{ userIds: string[] }` | 200 — added members |
+| POST | `/groups/:id/members` | `{ userIds: string[] }` (unik, ≥ 1, semua verified) | 200 — added members |
 | DELETE | `/groups/:id/members/:userId` | `:userId` (uuid) | 200 — removed |
 | PUT | `/groups/:id/members/:userId/role` | `{ role }` | 200 — updated |
-| DELETE | `/groups/:id/leave` | — | 200 — left group |
+| DELETE | `/groups/:id/leave` | — | 200 — left group (member terakhir → grup di-dismiss) |
 | DELETE | `/groups/:id` | — | 200 — group dismissed (admin only, permanent) |
 
 > **SYSTEM messages otomatis:** event grup tertentu menghasilkan pesan tipe `SYSTEM` (broadcast via `message:new`):
-> - buat grup → `<nama> created the group` · tambah member → `<nama> added <nama-nama>` · hapus member → `<nama> removed <target>` · keluar grup → `<nama> left the group` · ubah role → `<nama> made <target> admin` / `<nama> demoted <target> to member` · rename → `<nama> changed the group name to '<name>'`.
+> - buat grup → `<nama> created the group` · tambah member → `<nama> added <nama-nama>` · hapus member → `<nama> removed <target>` · keluar grup → `<nama> left the group` · ubah role → `<nama> made <target> admin` / `<nama> demoted <target> to member` (termasuk promosi otomatis saat admin terakhir leave) · rename → `<nama> changed the group name to '<name>'`.
 > - Pesan `SYSTEM` **tidak memiliki `message_status`** → **tidak menambah `unreadCount`**; tidak bisa di-pin/star (ditolak 400); tetap tampil normal di thread chat (`sender` = aktor aksi).
 >
 > **`POST /groups` (create):** multipart `name` + `participantIds` (min 2, total ≥ 3) + optional `description` / `avatar`. Creator jadi `ADMIN`. Setelah create, broadcast `group:created` `{ conversationId, name }` ke room `user:<id>` tiap member (FE lalu `group:join`). GROUP dari `POST /conversations` **dipindah ke sini** — `POST /conversations` kini hanya PRIVATE.
 >
-> **Limit & pembubaran:**
+> **Limit, validasi & pembubaran:**
 > - `MAX_GROUP_MEMBERS = 50` — total member grup (saat create maupun add) dibatasi.
+> - `POST /groups/:id/members`: `userIds` harus **unik** (duplikat → 400) dan semua user harus **verified** (unverified → 400), konsisten dengan `POST /groups`.
+> - `DELETE /groups/:id/leave`: jika admin terakhir leave, member MEMBER pertama di-promote menjadi `ADMIN` (broadcast `group:member-role-changed` + SYSTEM message). Jika **member terakhir** leave, grup otomatis di-dismiss (conversation + notifikasi dihapus, file avatar dihapus, leaver menerima `group:dismissed`).
 > - `DELETE /groups/:id` (dismiss, admin only, permanen): hapus conversation beserta messages/members/status/reactions/stars/notifications (cascade DB); semua socket dipaksa keluar room; file avatar dihapus; broadcast `group:dismissed` `{ conversationId }` ke semua member.
 > - Socket member yang di-kick (remove) atau leave dipaksa keluar room `conversation:<id>` — tidak akan menerima pesan setelahnya.
 
@@ -322,7 +324,7 @@ const socket = io('http://{{BACKEND_IP}}:3000', {
 | `group:avatar-updated` | Row conversation penuh (id, type, name, avatarUrl, description, createdBy, createdAt) | Group avatar changed |
 | `group:member-added` | `{ conversationId, addedBy }` (ke member baru) atau `{ conversationId, newMembers, addedBy }` (ke member lama) | New members added |
 | `group:member-removed` | `{ conversationId, removedBy }` (ke yang dihapus/keluar) atau `{ conversationId, targetUserId, removedBy }` (ke member tersisa) | Member removed |
-| `group:member-role-changed` | `{ conversationId, targetUserId, newRole, changedBy }` | Member role changed |
+| `group:member-role-changed` | `{ conversationId, targetUserId, newRole, changedBy }` | Member role changed (via `PUT .../role` **dan** promosi otomatis saat admin terakhir leave) |
 | `group:dismissed` | `{ conversationId }` | Grup di-dismiss permanen (ke tiap member) |
 | `contact:new` | `{ contact: { id, username, fullName, avatarUrl } }` | Someone added you as contact |
 | `contact:remove` | `{ userId }` | Someone removed you from their contacts |
