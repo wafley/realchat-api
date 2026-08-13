@@ -15,7 +15,7 @@ const notificationColumns = {
   createdAt: notifications.createdAt,
 };
 
-export async function create(data: {
+export type CreateNotificationData = {
   userId: string;
   type: string;
   actorId?: string;
@@ -23,8 +23,15 @@ export async function create(data: {
   messageId?: string;
   title: string;
   body: string;
-}) {
-  const [notif] = await db.insert(notifications).values(data).returning(notificationColumns);
+};
+
+export async function createMany(data: CreateNotificationData[]) {
+  if (data.length === 0) return [];
+  return db.insert(notifications).values(data).returning(notificationColumns);
+}
+
+export async function create(data: CreateNotificationData) {
+  const [notif] = await createMany([data]);
   return notif;
 }
 

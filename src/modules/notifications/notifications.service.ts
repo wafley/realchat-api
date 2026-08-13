@@ -1,18 +1,19 @@
 import * as repository from './notifications.repository';
+import type { CreateNotificationData } from './notifications.repository';
 import { NotFoundError, ForbiddenError } from '../../utils/errors';
 import { getIO } from '../../socket/index';
 
-export async function createAndEmit(data: {
-  userId: string;
-  type: string;
-  actorId?: string;
-  conversationId?: string;
-  messageId?: string;
-  title: string;
-  body: string;
-}) {
-  const notif = await repository.create(data);
-  getIO().to(`user:${data.userId}`).emit('notification:new', { notification: notif });
+export async function createAndEmitMany(items: CreateNotificationData[]) {
+  const notifs = await repository.createMany(items);
+  const io = getIO();
+  for (const notif of notifs) {
+    io.to(`user:${notif.userId}`).emit('notification:new', { notification: notif });
+  }
+  return notifs;
+}
+
+export async function createAndEmit(data: CreateNotificationData) {
+  const [notif] = await createAndEmitMany([data]);
   return notif;
 }
 
