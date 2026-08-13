@@ -299,6 +299,22 @@ export async function leaveGroup(userId: string, groupId: string) {
     if (nonAdminMembers.length > 0) {
       const newAdmin = nonAdminMembers[0];
       await repository.updateMemberRole(groupId, newAdmin.userId, 'ADMIN');
+
+      const leaverUser = await findUserById(userId);
+      const newAdminUser = await findUserById(newAdmin.userId);
+      getIO()
+        .to(members.filter((m) => m.userId !== userId).map((m) => `user:${m.userId}`))
+        .emit('group:member-role-changed', {
+          conversationId: groupId,
+          targetUserId: newAdmin.userId,
+          newRole: 'ADMIN',
+          changedBy: userId,
+        });
+      await emitSystemMessage(
+        groupId,
+        userId,
+        `${displayName(leaverUser)} made ${displayName(newAdminUser)} admin`,
+      );
     }
   }
 
