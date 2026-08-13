@@ -148,8 +148,9 @@ export async function updateAvatar(userId: string, groupId: string, file: Expres
 export async function addMembers(userId: string, groupId: string, userIds: string[]) {
   const { conversation, members } = await validateGroupAdmin(userId, groupId);
 
+  const uniqueUserIds = [...new Set(userIds)];
   const existingIds = new Set(members.map((m) => m.userId));
-  const newIds = userIds.filter((id) => !existingIds.has(id));
+  const newIds = uniqueUserIds.filter((id) => !existingIds.has(id));
 
   if (newIds.length === 0) throw new BadRequestError('All users are already members');
   if (members.length + newIds.length > MAX_GROUP_MEMBERS)
