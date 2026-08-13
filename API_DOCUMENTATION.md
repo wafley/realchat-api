@@ -100,7 +100,7 @@ Ulang request yang gagal
 
 | Method | Endpoint | Body/Params | Response |
 |--------|----------|-------------|----------|
-| POST | `/conversations` | `{ participantId }` (PRIVATE only — buat grup pakai `POST /groups`) | 201 — conversation |
+| POST | `/conversations` | `{ type: 'PRIVATE', participantId }` (PRIVATE only — buat grup pakai `POST /groups`) | 201 — conversation |
 | GET | `/conversations` | `?search=&cursor=&limit=20` | 200 — `{ conversations, nextCursor }` |
 | GET | `/conversations/:id` | `:id` (uuid) | 200 — detail + members |
 | DELETE | `/conversations/:id` | `:id` (uuid) | 200 — left conversation |
@@ -289,6 +289,7 @@ const socket = io('http://{{BACKEND_IP}}:3000', {
 | Event | Payload | Description |
 |-------|---------|-------------|
 | `message:send` | `{ conversationId, content, replyToId? }` | Send a message |
+| `message:seen` | `{ conversationId, lastSeenMessageId }` | Mark messages as seen (read receipts) |
 | `message:delete` | `{ conversationId, messageId }` | Delete a message |
 | `message:pin` | `{ messageId }` | Pin a message (broadcast ke room) |
 | `message:unpin` | `{ messageId }` | Unpin a message (broadcast ke room) |
@@ -305,9 +306,10 @@ const socket = io('http://{{BACKEND_IP}}:3000', {
 
 | Event | Payload | Description |
 |-------|---------|-------------|
-| `message:new` | `{ conversationId, message }` | New message in conversation |
-| `message:status` | `{ messageId, status: 'DELIVERED' \| 'SEEN', userId, seenAt }` | Message delivery/read status for the sender |
+| `message:new` | Row pesan penuh (id, conversationId, senderId, type, content, replyToId, isPinned, isEdited, isDeleted, editedAt, createdAt, updatedAt) | Pesan baru di conversation (SYSTEM & forward memakai shape sama) |
+| `message:status` | `{ messageId, status: 'DELIVERED' \| 'SEEN', userId, seenAt }` | Status delivery/read untuk pengirim |
 | `message:deleted` | `{ conversationId, messageId }` | Message deleted |
+| `message:edited` | Row pesan penuh (termasuk `updatedAt`) | Message edited |
 | `message:pin:updated` | `{ conversationId, messageId, isPinned }` | Message pin/unpin state changed |
 | `message:reaction:updated` | `{ messageId, reactions: [{ emoji, userIds[] }] }` | Reaction state changed |
 | `message:star:updated` | `{ messageId, isStarred, starredAt }` | Star state changed (**hanya ke room `user:<userId>`** — privat) |
@@ -315,11 +317,13 @@ const socket = io('http://{{BACKEND_IP}}:3000', {
 | `typing:stop` | `{ conversationId, userId }` | User stopped typing |
 | `presence:online` | `{ userId }` | User came online |
 | `presence:offline` | `{ userId, lastSeenAt }` | User went offline (with last seen time) |
-| `group:updated` | `{ id, name?, description? }` | Group info updated |
-| `group:avatar-updated` | `{ id, avatarUrl }` | Group avatar changed |
-| `group:member-added` | `{ conversationId, members }` | New members added |
-| `group:member-removed` | `{ conversationId, removedUserId }` | Member removed |
-| `group:role-changed` | `{ conversationId, userId, role }` | Member role changed |
+| `group:created` | `{ conversationId, name }` | Grup baru dibuat (ke tiap member) |
+| `group:updated` | Row conversation penuh (id, type, name, avatarUrl, description, createdBy, createdAt) | Group info updated |
+| `group:avatar-updated` | Row conversation penuh (id, type, name, avatarUrl, description, createdBy, createdAt) | Group avatar changed |
+| `group:member-added` | `{ conversationId, addedBy }` (ke member baru) atau `{ conversationId, newMembers, addedBy }` (ke member lama) | New members added |
+| `group:member-removed` | `{ conversationId, removedBy }` (ke yang dihapus/keluar) atau `{ conversationId, targetUserId, removedBy }` (ke member tersisa) | Member removed |
+| `group:member-role-changed` | `{ conversationId, targetUserId, newRole, changedBy }` | Member role changed |
+| `group:dismissed` | `{ conversationId }` | Grup di-dismiss permanen (ke tiap member) |
 | `contact:new` | `{ contact: { id, username, fullName, avatarUrl } }` | Someone added you as contact |
 | `contact:remove` | `{ userId }` | Someone removed you from their contacts |
 | `notification:new` | `{ notification }` | New notification |
