@@ -33,6 +33,8 @@ router.post(
 router.put('/:id/messages/:messageId/star', verifyJWT, controller.starMessage);
 router.delete('/:id/messages/:messageId/star', verifyJWT, controller.unstarMessage);
 router.post('/:id/read', verifyJWT, controller.markConversationRead);
+router.put('/:id/mute', verifyJWT, validate(validator.muteSchema), controller.muteConversation);
+router.delete('/:id/mute', verifyJWT, controller.unmuteConversation);
 router.get('/:id', verifyJWT, controller.getConversationById);
 router.delete('/:id', verifyJWT, controller.leaveConversation);
 router.patch('/:id/clear', verifyJWT, controller.clearConversation);

@@ -149,6 +149,23 @@ export async function findConversationList(
     .groupBy(conversationMembers.conversationId)
     .as('member_counts');
 
+  const unread = db
+    .select({
+      conversationId: messages.conversationId,
+      value: count().mapWith(Number).as('unread_count'),
+    })
+    .from(messageStatus)
+    .innerJoin(messages, eq(messages.id, messageStatus.messageId))
+    .where(
+      and(
+        eq(messageStatus.userId, userId),
+        ne(messageStatus.status, 'SEEN'),
+        ne(messages.senderId, userId),
+      ),
+    )
+    .groupBy(messages.conversationId)
+    .as('unread');
+
   const sortKey = sql`COALESCE(${lastMessage.createdAt}, ${conversations.createdAt})`;
 
   const conditions: (SQL | undefined)[] = [];
@@ -199,6 +216,7 @@ export async function findConversationList(
       peerLastSeenAt: peerUser.lastSeenAt,
       customName: contacts.customName,
       memberCount: memberCounts.value,
+      unreadCount: unread.value,
     })
     .from(conversations)
     .innerJoin(mine, eq(mine.conversationId, conversations.id))
@@ -214,6 +232,7 @@ export async function findConversationList(
     .leftJoin(peerUser, eq(peerUser.id, peer.userId))
     .leftJoin(contacts, and(eq(contacts.userId, userId), eq(contacts.contactId, peer.userId)))
     .leftJoin(memberCounts, eq(memberCounts.conversationId, conversations.id))
+    .leftJoin(unread, eq(unread.conversationId, conversations.id))
     .where(and(...conditions))
     .orderBy(sql`${sortKey} DESC NULLS LAST`, desc(conversations.id))
     .limit(limit + 1);
@@ -359,6 +378,24 @@ export async function clearConversation(conversationId: string, userId: string) 
       ),
     )
     .returning({ clearedAt: conversationMembers.clearedAt });
+  return row || null;
+}
+
+export async function setMutedUntil(
+  conversationId: string,
+  userId: string,
+  mutedUntil: Date | null,
+) {
+  const [row] = await db
+    .update(conversationMembers)
+    .set({ mutedUntil })
+    .where(
+      and(
+        eq(conversationMembers.conversationId, conversationId),
+        eq(conversationMembers.userId, userId),
+      ),
+    )
+    .returning({ mutedUntil: conversationMembers.mutedUntil });
   return row || null;
 }
 

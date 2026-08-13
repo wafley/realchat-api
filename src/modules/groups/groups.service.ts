@@ -5,9 +5,20 @@ import {
   findMembersByConversationId,
   addMembers as addConversationMembers,
   removeMember as removeConversationMember,
+  insertMessage,
 } from '../conversations/conversations.repository';
 import { NotFoundError, BadRequestError, ForbiddenError } from '../../utils/errors';
 import { getIO } from '../../socket/index';
+
+function displayName(user: { fullName?: string | null; username?: string } | null | undefined) {
+  return user?.fullName || user?.username || 'Unknown';
+}
+
+async function emitSystemMessage(conversationId: string, senderId: string, content: string) {
+  const message = await insertMessage({ conversationId, senderId, content, type: 'SYSTEM' });
+  getIO().to(`conversation:${conversationId}`).emit('message:new', message);
+  return message;
+}
 
 async function validateGroupAdmin(userId: string, groupId: string) {
   const conversation = await findConversationById(groupId);
@@ -28,11 +39,21 @@ export async function updateGroup(
   groupId: string,
   data: { name?: string; description?: string | null },
 ) {
-  const { members } = await validateGroupAdmin(userId, groupId);
+  const { conversation, members } = await validateGroupAdmin(userId, groupId);
   const updated = await repository.updateGroup(groupId, data);
   members.forEach((m) => {
     getIO().to(`user:${m.userId}`).emit('group:updated', updated);
   });
+
+  if (data.name && data.name !== conversation.name) {
+    const actor = await findUserById(userId);
+    await emitSystemMessage(
+      conversation.id,
+      userId,
+      `${displayName(actor)} changed the group name to '${updated.name}'`,
+    );
+  }
+
   return updated;
 }
 
@@ -54,9 +75,11 @@ export async function addMembers(userId: string, groupId: string, userIds: strin
 
   if (newIds.length === 0) throw new BadRequestError('All users are already members');
 
+  const newUsers: Awaited<ReturnType<typeof findUserById>>[] = [];
   for (const id of newIds) {
     const user = await findUserById(id);
     if (!user) throw new NotFoundError(`User ${id} not found`);
+    newUsers.push(user);
   }
 
   await addConversationMembers(
@@ -80,6 +103,13 @@ export async function addMembers(userId: string, groupId: string, userIds: strin
       addedBy: userId,
     });
   });
+
+  const actor = await findUserById(userId);
+  await emitSystemMessage(
+    groupId,
+    userId,
+    `${displayName(actor)} added ${newUsers.map((u) => displayName(u)).join(', ')}`,
+  );
 
   return { added: newIds.length };
 }
@@ -113,6 +143,14 @@ export async function removeMember(userId: string, groupId: string, targetUserId
         removedBy: userId,
       });
     });
+
+  const actor = await findUserById(userId);
+  const targetUser = await findUserById(targetUserId);
+  await emitSystemMessage(
+    groupId,
+    userId,
+    `${displayName(actor)} removed ${displayName(targetUser)}`,
+  );
 }
 
 export async function changeRole(
@@ -146,6 +184,16 @@ export async function changeRole(
       changedBy: userId,
     });
   });
+
+  const actor = await findUserById(userId);
+  const targetUser = await findUserById(targetUserId);
+  await emitSystemMessage(
+    groupId,
+    userId,
+    role === 'ADMIN'
+      ? `${displayName(actor)} made ${displayName(targetUser)} admin`
+      : `${displayName(actor)} demoted ${displayName(targetUser)} to member`,
+  );
 }
 
 export async function leaveGroup(userId: string, groupId: string) {
@@ -182,4 +230,7 @@ export async function leaveGroup(userId: string, groupId: string) {
       removedBy: userId,
     });
   });
+
+  const leaver = await findUserById(userId);
+  await emitSystemMessage(groupId, userId, `${displayName(leaver)} left the group`);
 }

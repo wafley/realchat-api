@@ -105,16 +105,20 @@ Ulang request yang gagal
 | GET | `/conversations/:id` | `:id` (uuid) | 200 — detail + members |
 | DELETE | `/conversations/:id` | `:id` (uuid) | 200 — left conversation |
 | PATCH | `/conversations/:id/clear` | — | 200 — `{ clearedAt }` set `cleared_at` milik user (hide-per-user) |
+| PUT | `/conversations/:id/mute` | `{ until? }` (ISO datetime) | 200 — `{ mutedUntil }` mute conversation (per-user) |
+| DELETE | `/conversations/:id/mute` | — | 200 — `{ mutedUntil: null }` unmute |
 
 > **`GET /conversations` — chat list:**
 > - `search?` — filter by `conversations.name`, peer `username`/`fullName`, `customName`, atau isi last message.
 > - `cursor?` — **composite cursor** `base64url("<sortKey ISO>|<conversationId>")` dari `nextCursor` halaman sebelumnya (keyset pagination `(sortKey, id)`).
 > - `limit?` — 1–50, default 20.
+> - `unreadCount` — jumlah pesan masuk (dari user lain) dengan status belum `SEEN`, dihitung dari `message_status`. Pesan `SYSTEM` dan pesan sendiri tidak dihitung. Turun (bisa `0`) saat mark-read `POST /conversations/:id/read` atau clear `PATCH /conversations/:id/clear`.
 > - Diurutkan berdasarkan aktivitas terakhir (last message → dibuatnya conversation), terbaru dulu.
 > - `search` mencocokkan nama conversation, `username`/`full name` peer, `customName`, atau isi last message. Karakter wildcard (`%`, `_`) dianggap literal.
 > - `displayName`: **PRIVATE** = `customName` → full name peer → username peer → `'Unknown'`; **GROUP** = `name`.
 > - `lastMessage.sender` hanya untuk **PRIVATE**; `isOnline`/`lastSeenAt` hanya untuk **PRIVATE**; `memberCount` hanya untuk **GROUP**; `myRole`/`mutedUntil`/`clearedAt` dari membership milikku.
-> - `unreadCount` belum ada (menyusul di fitur read receipts).
+>
+> **Mute (`PUT/DELETE /conversations/:id/mute`):** per-user, hanya mengubah membership sendiri. `PUT` dengan `until` (ISO, harus di masa depan) → `mutedUntil` = waktu tersebut; **tanpa `until` = mute permanen** (dipetakan ke `now() + 10 tahun` — FE harus memperlakukan `mutedUntil` yang jauh ke masa depan sebagai **"permanen"**, bukan jadwal auto-unmute). `DELETE` mengembalikan `mutedUntil` ke `null` (unmuted). Belum ada enforcement notifikasi push (menyusul di fitur notifikasi); badge unread tetap dihitung untuk conversation yang di-mute.
 >
 > **Contoh response `GET /conversations`:**
 > ```json
@@ -136,6 +140,7 @@ Ulang request yang gagal
 >       "myRole": "MEMBER",
 >       "mutedUntil": null,
 >       "clearedAt": null,
+>       "unreadCount": 0,
 >       "lastMessage": {
 >         "id": "uuid",
 >         "content": "halo!",
@@ -162,6 +167,7 @@ Ulang request yang gagal
 >       "myRole": "ADMIN",
 >       "mutedUntil": null,
 >       "clearedAt": null,
+>       "unreadCount": 0,
 >       "lastMessage": null
 >     }
 >   ],
@@ -199,6 +205,10 @@ Ulang request yang gagal
 | DELETE | `/groups/:id/members/:userId` | `:userId` (uuid) | 200 — removed |
 | PUT | `/groups/:id/members/:userId/role` | `{ role }` | 200 — updated |
 | DELETE | `/groups/:id/leave` | — | 200 — left group |
+
+> **SYSTEM messages otomatis:** event grup tertentu menghasilkan pesan tipe `SYSTEM` (broadcast via `message:new`):
+> - tambah member → `<nama> added <nama-nama>` · hapus member → `<nama> removed <target>` · keluar grup → `<nama> left the group` · ubah role → `<nama> made <target> admin` / `<nama> demoted <target> to member` · rename → `<nama> changed the group name to '<name>'`.
+> - Pesan `SYSTEM` **tidak memiliki `message_status`** → **tidak menambah `unreadCount`**; tidak bisa di-pin/star (ditolak 400); tetap tampil normal di thread chat (`sender` = aktor aksi).
 
 ### Contacts (Bearer required)
 

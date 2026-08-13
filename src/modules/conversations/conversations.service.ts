@@ -135,6 +135,7 @@ export async function getConversations(
       myRole: row.myRole,
       mutedUntil: row.mutedUntil,
       clearedAt: row.clearedAt,
+      unreadCount: row.unreadCount ?? 0,
       lastMessage,
     };
   });
@@ -213,6 +214,12 @@ export async function clearConversation(userId: string, conversationId: string) 
   if (!member) throw new ForbiddenError('You are not a member of this conversation');
 
   const row = await repository.clearConversation(conversationId, userId);
+
+  const incomingIds = await repository.findIncomingMessageIdsByConversation(conversationId, userId);
+  if (incomingIds.length > 0) {
+    await repository.markMessagesSeen(userId, incomingIds, new Date());
+  }
+
   return { clearedAt: row?.clearedAt ? row.clearedAt.toISOString() : null };
 }
 
@@ -449,4 +456,42 @@ export async function getStarredMessages(userId: string, cursor?: string, limit 
     messages,
     nextCursor: hasMore ? page[page.length - 1].starredAt.toISOString() : null,
   };
+}
+
+const MUTE_FOREVER_YEARS = 10;
+
+function muteForeverDate(): Date {
+  return new Date(Date.now() + MUTE_FOREVER_YEARS * 365 * 24 * 60 * 60 * 1000);
+}
+
+export async function setConversationMute(userId: string, conversationId: string, until?: string) {
+  const conversation = await repository.findConversationById(conversationId);
+  if (!conversation) throw new NotFoundError('Conversation not found');
+
+  const member = await repository.isMember(conversationId, userId);
+  if (!member) throw new ForbiddenError('You are not a member of this conversation');
+
+  let mutedUntil: Date;
+  if (until) {
+    const parsed = new Date(until);
+    if (Number.isNaN(parsed.getTime())) throw new BadRequestError('Invalid until date');
+    if (parsed.getTime() <= Date.now()) throw new BadRequestError('until must be in the future');
+    mutedUntil = parsed;
+  } else {
+    mutedUntil = muteForeverDate();
+  }
+
+  const row = await repository.setMutedUntil(conversationId, userId, mutedUntil);
+  return { mutedUntil: (row?.mutedUntil ?? mutedUntil).toISOString() };
+}
+
+export async function unmuteConversation(userId: string, conversationId: string) {
+  const conversation = await repository.findConversationById(conversationId);
+  if (!conversation) throw new NotFoundError('Conversation not found');
+
+  const member = await repository.isMember(conversationId, userId);
+  if (!member) throw new ForbiddenError('You are not a member of this conversation');
+
+  await repository.setMutedUntil(conversationId, userId, null);
+  return { mutedUntil: null };
 }
