@@ -78,6 +78,17 @@ export async function createGroup(
     })),
   );
 
+  const actor = await findUserById(userId);
+  await emitSystemMessage(conversation.id, userId, `${displayName(actor)} created the group`);
+
+  const io = getIO();
+  allIds.forEach((id) => {
+    io.to(`user:${id}`).emit('group:created', {
+      conversationId: conversation.id,
+      name: conversation.name,
+    });
+  });
+
   return conversation;
 }
 
