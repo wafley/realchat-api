@@ -321,6 +321,8 @@ const pinnedMessageSenderColumns = {
   senderAvatarUrl: users.avatarUrl,
 };
 
+const senderUser = aliasedTable(users, 'sender_user');
+
 export async function findMessagesByConversationId(
   conversationId: string,
   cursor?: string,
@@ -362,9 +364,13 @@ export async function findMessagesByConversationId(
       seenAt: statusAgg.seenAt,
       isStarred: star ? sql<boolean>`${star.messageId} IS NOT NULL` : sql<boolean>`false`,
       starredAt: star ? star.starredAt : sql<Date | null>`NULL`,
+      senderUsername: senderUser.username,
+      senderFullName: senderUser.fullName,
+      senderAvatarUrl: senderUser.avatarUrl,
     })
     .from(messages)
-    .leftJoin(statusAgg, eq(statusAgg.messageId, messages.id));
+    .leftJoin(statusAgg, eq(statusAgg.messageId, messages.id))
+    .leftJoin(senderUser, eq(senderUser.id, messages.senderId));
 
   if (star) query.leftJoin(star, eq(star.messageId, messages.id));
 

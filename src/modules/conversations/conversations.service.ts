@@ -1,6 +1,7 @@
 import * as repository from './conversations.repository';
 import { findUserById } from '../auth/auth.repository';
 import { NotFoundError, BadRequestError, ForbiddenError } from '../../utils/errors';
+import { toSender } from '../../utils/sender';
 import { getIO } from '../../socket/index';
 import { onlineUsers } from '../../socket/onlineUsers';
 
@@ -157,12 +158,28 @@ export async function getMessages(
   const hasMore = rawMessages.length > limit;
   const messagesList = hasMore ? rawMessages.slice(0, limit) : rawMessages;
 
-  const messages = messagesList.map(({ statusRank, seenAt, starredAt, ...message }) => ({
-    ...message,
-    status: statusRank == null || statusRank < 1 ? 'SENT' : statusRank >= 2 ? 'SEEN' : 'DELIVERED',
-    seenAt: seenAt ? seenAt.toISOString() : null,
-    starredAt: starredAt ? starredAt.toISOString() : null,
-  }));
+  const messages = messagesList.map(
+    ({
+      statusRank,
+      seenAt,
+      starredAt,
+      senderUsername,
+      senderFullName,
+      senderAvatarUrl,
+      ...message
+    }) => ({
+      ...message,
+      status:
+        statusRank == null || statusRank < 1 ? 'SENT' : statusRank >= 2 ? 'SEEN' : 'DELIVERED',
+      seenAt: seenAt ? seenAt.toISOString() : null,
+      starredAt: starredAt ? starredAt.toISOString() : null,
+      sender: {
+        username: senderUsername,
+        fullName: senderFullName,
+        avatarUrl: senderAvatarUrl,
+      },
+    }),
+  );
 
   return {
     messages,
@@ -325,9 +342,12 @@ export async function forwardMessage(
     }
   }
 
-  getIO().to(`conversation:${targetConversationId}`).emit('message:new', created);
+  const senderUser = await findUserById(userId);
+  const createdPayload = { ...created, sender: toSender(senderUser) };
 
-  return created;
+  getIO().to(`conversation:${targetConversationId}`).emit('message:new', createdPayload);
+
+  return createdPayload;
 }
 
 export async function getPinnedMessages(userId: string, conversationId: string, limit = 50) {

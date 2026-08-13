@@ -191,6 +191,8 @@ Ulang request yang gagal
 | GET | `/messages/starred` | `?cursor=&limit=50` | 200 — `{ messages, nextCursor }` semua pesan ter-star milik user |
 | POST | `/conversations/:id/read` | — | 200 — `{ updated, seenAt }` tandai semua pesan masuk SEEN |
 
+> **`GET /conversations/:id/messages`:** tiap message kini membawa `sender: { username, fullName, avatarUrl }` (join ke tabel `users`), selain `status` (`SENT`/`DELIVERED`/`SEEN`), `seenAt`, `isStarred`, `starredAt`. Event socket `message:new` (send, forward, SYSTEM) memakai shape yang sama.
+
 > **`GET /conversations/:id/pinned`:** diurutkan `pinnedAt` DESC — pesan yang paling baru di-pin tampil pertama. `pinnedAt` hanya bergeser saat pin/unpin, sehingga mengedit pesan terpin tidak mengubah urutan. Unpin menyetel `pinnedAt` ke `null`. Pesan tipe `SYSTEM` tidak dapat di-pin dan dikecualikan dari daftar.
 >
 > **Star — `message_stars` (per-user, privat):** tiap message pada `GET /conversations/:id/messages` kini membawa `isStarred` (bool) dan `starredAt`. `GET /messages/starred` menampilkan detil pesan + `sender` + `conversation`, diurutkan `starredAt` DESC. Pesan `SYSTEM` / `isDeleted` tidak dapat di-star baru, tapi star yang sudah ada **tidak otomatis dihapus** — pesan yang di-*soft delete* / di-*clear* **tetap muncul** di daftar starred (`isDeleted: true`, `content: ""` → FE render placeholder). Event socket `message:star:updated` (`{ messageId, isStarred, starredAt }`) **hanya dikirim ke room `user:<userId>`** (privasi star).
@@ -308,7 +310,7 @@ const socket = io('http://{{BACKEND_IP}}:3000', {
 
 | Event | Payload | Description |
 |-------|---------|-------------|
-| `message:new` | Row pesan penuh (id, conversationId, senderId, type, content, replyToId, isPinned, isEdited, isDeleted, editedAt, createdAt, updatedAt) | Pesan baru di conversation (SYSTEM & forward memakai shape sama) |
+| `message:new` | Row pesan penuh (id, conversationId, senderId, type, content, replyToId, isPinned, isEdited, isDeleted, editedAt, createdAt, updatedAt) **+ `sender: { username, fullName, avatarUrl }`** | Pesan baru di conversation (SYSTEM & forward memakai shape sama) |
 | `message:status` | `{ messageId, status: 'DELIVERED' \| 'SEEN', userId, seenAt }` | Status delivery/read untuk pengirim |
 | `message:deleted` | `{ conversationId, messageId }` | Message deleted |
 | `message:edited` | Row pesan penuh (termasuk `updatedAt`) | Message edited |
