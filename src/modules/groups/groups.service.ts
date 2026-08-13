@@ -160,6 +160,7 @@ export async function addMembers(userId: string, groupId: string, userIds: strin
   for (const id of newIds) {
     const user = await findUserById(id);
     if (!user) throw new NotFoundError(`User ${id} not found`);
+    if (!user.isVerified) throw new BadRequestError('All group members must be verified');
     newUsers.push(user);
   }
 
