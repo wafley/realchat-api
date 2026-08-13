@@ -177,27 +177,31 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
         io.to(`conversation:${conversationId}`).emit('message:new', message);
 
         if (membership.conversationType === 'GROUP') {
-          const usernames = extractMentions(content);
-          if (usernames.length > 0) {
-            const mentioned = await findUserIdsByUsernames(usernames);
-            if (mentioned.length > 0) {
-              const recipientIdSet = new Set(recipientRows.map((r) => r.userId));
-              const targets = mentioned.filter((m) => recipientIdSet.has(m.id));
-              if (targets.length > 0) {
-                const sender = await findUserById(userId);
-                await createAndEmitMany(
-                  targets.map((t) => ({
-                    userId: t.id,
-                    type: 'mention',
-                    actorId: userId,
-                    conversationId,
-                    messageId: message.id,
-                    title: 'Mention',
-                    body: `@${sender?.username || 'Someone'} menyebut Anda`,
-                  })),
-                );
+          try {
+            const usernames = extractMentions(content);
+            if (usernames.length > 0) {
+              const mentioned = await findUserIdsByUsernames(usernames);
+              if (mentioned.length > 0) {
+                const recipientIdSet = new Set(recipientRows.map((r) => r.userId));
+                const targets = mentioned.filter((m) => recipientIdSet.has(m.id));
+                if (targets.length > 0) {
+                  const sender = await findUserById(userId);
+                  await createAndEmitMany(
+                    targets.map((t) => ({
+                      userId: t.id,
+                      type: 'mention',
+                      actorId: userId,
+                      conversationId,
+                      messageId: message.id,
+                      title: 'Mention',
+                      body: `@${sender?.username || 'Someone'} menyebut Anda`,
+                    })),
+                  );
+                }
               }
             }
+          } catch {
+            // Notification failure must not fail the message send.
           }
         }
 
