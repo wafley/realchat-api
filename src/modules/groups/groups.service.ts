@@ -6,10 +6,14 @@ import {
   addMembers as addConversationMembers,
   removeMember as removeConversationMember,
   insertMessage,
+  deleteConversation,
 } from '../conversations/conversations.repository';
 import { NotFoundError, BadRequestError, ForbiddenError } from '../../utils/errors';
 import { getIO } from '../../socket/index';
 import { MAX_GROUP_MEMBERS } from '../../config/constants';
+import { env } from '../../config/env';
+import { promises as fs } from 'fs';
+import path from 'path';
 
 function displayName(user: { fullName?: string | null; username?: string } | null | undefined) {
   return user?.fullName || user?.username || 'Unknown';
@@ -247,4 +251,25 @@ export async function leaveGroup(userId: string, groupId: string) {
   await emitSystemMessage(groupId, userId, `${displayName(leaver)} left the group`);
 
   await forceLeaveConversationRoom(userId, groupId);
+}
+
+export async function dismissGroup(userId: string, groupId: string) {
+  const { conversation, members } = await validateGroupAdmin(userId, groupId);
+
+  await deleteConversation(groupId);
+
+  const io = getIO();
+  members.forEach((m) => {
+    io.to(`user:${m.userId}`).emit('group:dismissed', { conversationId: groupId });
+  });
+  await forceLeaveConversationRoom(userId, groupId);
+  const room = `conversation:${groupId}`;
+  io.in(room).socketsLeave(room);
+
+  if (conversation.avatarUrl) {
+    const filename = conversation.avatarUrl.split('/').pop();
+    if (filename) {
+      await fs.unlink(path.join(env.uploadDir, filename)).catch(() => undefined);
+    }
+  }
 }

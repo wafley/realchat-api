@@ -18,5 +18,6 @@ router.put(
   controller.changeRole,
 );
 router.delete('/:id/leave', verifyJWT, controller.leaveGroup);
+router.delete('/:id', verifyJWT, controller.dismissGroup);
 
 export default router;
