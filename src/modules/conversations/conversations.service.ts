@@ -3,66 +3,27 @@ import { findUserById } from '../auth/auth.repository';
 import { NotFoundError, BadRequestError, ForbiddenError } from '../../utils/errors';
 import { getIO } from '../../socket/index';
 import { onlineUsers } from '../../socket/onlineUsers';
-import { MAX_GROUP_MEMBERS } from '../../config/constants';
 
-export async function createConversation(
-  userId: string,
-  data: {
-    type: 'PRIVATE' | 'GROUP';
-    participantId?: string;
-    name?: string;
-    participantIds?: string[];
-  },
-) {
-  if (data.type === 'PRIVATE') {
-    if (!data.participantId)
-      throw new BadRequestError('participantId is required for private chat');
+export async function createConversation(userId: string, data: { participantId: string }) {
+  if (!data.participantId) throw new BadRequestError('participantId is required for private chat');
 
-    const participant = await findUserById(data.participantId);
-    if (!participant) throw new NotFoundError('Participant not found');
-    if (!participant.isVerified)
-      throw new BadRequestError('Cannot start a conversation with an unverified user');
+  const participant = await findUserById(data.participantId);
+  if (!participant) throw new NotFoundError('Participant not found');
+  if (!participant.isVerified)
+    throw new BadRequestError('Cannot start a conversation with an unverified user');
 
-    const existing = await repository.findPrivateConversation(userId, data.participantId);
-    if (existing) return existing;
-
-    const conversation = await repository.createConversation({
-      type: 'PRIVATE',
-      createdBy: userId,
-    });
-
-    await repository.addMembers(conversation.id, [
-      { userId, role: 'MEMBER' },
-      { userId: data.participantId, role: 'MEMBER' },
-    ]);
-
-    return conversation;
-  }
-
-  const allIds = [userId, ...(data.participantIds || [])];
-  if (allIds.length < 3) throw new BadRequestError('Group must have at least 3 members');
-  if (allIds.length > MAX_GROUP_MEMBERS)
-    throw new BadRequestError(`Group cannot have more than ${MAX_GROUP_MEMBERS} members`);
-
-  for (const id of allIds) {
-    const user = await findUserById(id);
-    if (!user) throw new NotFoundError(`User ${id} not found`);
-    if (!user.isVerified) throw new BadRequestError('All group members must be verified');
-  }
+  const existing = await repository.findPrivateConversation(userId, data.participantId);
+  if (existing) return existing;
 
   const conversation = await repository.createConversation({
-    type: 'GROUP',
-    name: data.name,
+    type: 'PRIVATE',
     createdBy: userId,
   });
 
-  await repository.addMembers(
-    conversation.id,
-    allIds.map((id) => ({
-      userId: id,
-      role: id === userId ? 'ADMIN' : 'MEMBER',
-    })),
-  );
+  await repository.addMembers(conversation.id, [
+    { userId, role: 'MEMBER' },
+    { userId: data.participantId, role: 'MEMBER' },
+  ]);
 
   return conversation;
 }

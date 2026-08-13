@@ -100,7 +100,7 @@ Ulang request yang gagal
 
 | Method | Endpoint | Body/Params | Response |
 |--------|----------|-------------|----------|
-| POST | `/conversations` | `{ type, participantId }` or `{ type, name, participantIds }` | 201 — conversation |
+| POST | `/conversations` | `{ participantId }` (PRIVATE only — buat grup pakai `POST /groups`) | 201 — conversation |
 | GET | `/conversations` | `?search=&cursor=&limit=20` | 200 — `{ conversations, nextCursor }` |
 | GET | `/conversations/:id` | `:id` (uuid) | 200 — detail + members |
 | DELETE | `/conversations/:id` | `:id` (uuid) | 200 — left conversation |
