@@ -324,6 +324,8 @@ const socket = io('http://{{BACKEND_IP}}:3000', {
 | `contact:remove` | `{ userId }` | Someone removed you from their contacts |
 | `notification:new` | `{ notification }` | New notification |
 
+> `notification.type` yang ada: `new_contact`, `group_invite` (dibuat ke peserta saat grup dibuat atau member ditambahkan; body `@admin ...`), `mention` (di pesan grup saja, saat user disebut `@username`; berisi `actorId`, `conversationId`, `messageId`).
+
 ---
 
 ## Example: Fetch Helper with Auto-Refresh
