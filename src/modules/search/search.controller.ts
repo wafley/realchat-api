@@ -15,9 +15,9 @@ export async function searchUsers(req: AuthRequest, res: Response, next: NextFun
 
 export async function searchGroups(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const { q, limit } = searchQuerySchema.parse(req.query);
-    const groups = await searchService.searchGroups(q, limit);
-    res.status(200).json({ success: true, data: { groups } });
+    const { q, cursor, limit } = searchQuerySchema.parse(req.query);
+    const result = await searchService.searchGroups(req.userId!, q, cursor, limit);
+    res.status(200).json({ success: true, data: result });
   } catch (error) {
     next(error);
   }

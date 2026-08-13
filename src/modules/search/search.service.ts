@@ -5,8 +5,18 @@ export async function searchUsers(currentUserId: string, q: string, limit = 50) 
   return repository.searchUsers(currentUserId, q, limit);
 }
 
-export async function searchGroups(q: string, limit = 50) {
-  return repository.searchGroups(q, limit);
+export async function searchGroups(currentUserId: string, q: string, cursor?: string, limit = 50) {
+  const rows = await repository.searchGroups(currentUserId, q, cursor, limit);
+  const hasMore = rows.length > limit;
+  const groups = hasMore ? rows.slice(0, limit) : rows;
+
+  return {
+    groups: groups.map((row) => ({
+      ...row,
+      createdAt: row.createdAt.toISOString(),
+    })),
+    nextCursor: hasMore ? groups[groups.length - 1].createdAt : null,
+  };
 }
 
 export async function searchMessages(

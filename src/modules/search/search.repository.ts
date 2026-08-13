@@ -75,7 +75,7 @@ export async function searchUsers(currentUserId: string, q: string, limit = 50) 
   return rows;
 }
 
-export async function searchGroups(q: string, limit = 50) {
+export async function searchGroups(currentUserId: string, q: string, cursor?: string, limit = 50) {
   const pattern = `%${escapeLike(q)}%`;
   const memberCounts = db
     .select({
@@ -85,6 +85,15 @@ export async function searchGroups(q: string, limit = 50) {
     .from(conversationMembers)
     .groupBy(conversationMembers.conversationId)
     .as('member_counts');
+
+  const mine = db
+    .select({ conversationId: conversationMembers.conversationId })
+    .from(conversationMembers)
+    .where(eq(conversationMembers.userId, currentUserId))
+    .as('mine');
+
+  const conditions: SQL[] = [eq(conversations.type, 'GROUP'), ilike(conversations.name, pattern)];
+  if (cursor) conditions.push(lt(conversations.createdAt, new Date(cursor)));
 
   const rows = await db
     .select({
@@ -97,10 +106,11 @@ export async function searchGroups(q: string, limit = 50) {
       memberCount: memberCounts.value,
     })
     .from(conversations)
+    .innerJoin(mine, eq(mine.conversationId, conversations.id))
     .leftJoin(memberCounts, eq(memberCounts.conversationId, conversations.id))
-    .where(and(eq(conversations.type, 'GROUP'), ilike(conversations.name, pattern)))
+    .where(and(...conditions))
     .orderBy(desc(conversations.createdAt))
-    .limit(limit);
+    .limit(limit + 1);
   return rows;
 }
 

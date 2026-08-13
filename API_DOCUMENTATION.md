@@ -266,7 +266,7 @@ Ulang request yang gagal
 | Method | Endpoint | Body/Params | Response |
 |--------|----------|-------------|----------|
 | GET | `/search/users` | `?q=&limit=50` | 200 — `{ users }` cari user by username/fullName (verified) |
-| GET | `/search/groups` | `?q=&limit=50` | 200 — `{ groups }` cari grup by nama + `memberCount` |
+| GET | `/search/groups` | `?q=&cursor=&limit=50` | 200 — `{ groups, nextCursor }` cari grup milik user by nama + `memberCount` (hanya grup yang diikuti) |
 | GET | `/search/messages` | `?q=&conversationId=&before=&after=&cursor=&limit=50` | 200 — `{ messages, nextCursor }` cari pesan (dalam satu conversation atau semua punya user) |
 | GET | `/dm/search` | `?q=&cursor=&limit=50` | 200 — `{ messages, nextCursor }` cari pesan di semua DM user → `[{ messageId, conversationId, conversationName, senderId, senderName, content, createdAt }]` |
 
