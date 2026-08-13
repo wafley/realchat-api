@@ -7,6 +7,13 @@ import * as controller from './groups.controller';
 
 const router = Router();
 
+router.post(
+  '/',
+  verifyJWT,
+  uploadGroupPhoto.single('avatar'),
+  validate(validator.createGroupSchema),
+  controller.createGroup,
+);
 router.put('/:id', verifyJWT, validate(validator.updateGroupSchema), controller.updateGroup);
 router.put('/:id/avatar', verifyJWT, uploadGroupPhoto.single('avatar'), controller.updateAvatar);
 router.post('/:id/members', verifyJWT, validate(validator.addMembersSchema), controller.addMembers);

@@ -4,6 +4,7 @@ import {
   findConversationById,
   findMembersByConversationId,
   addMembers as addConversationMembers,
+  createConversation,
   removeMember as removeConversationMember,
   insertMessage,
   deleteConversation,
@@ -44,6 +45,40 @@ async function validateGroupAdmin(userId: string, groupId: string) {
     throw new ForbiddenError('Only admins can perform this action');
 
   return { conversation, members };
+}
+
+export async function createGroup(
+  userId: string,
+  data: { name: string; description?: string; participantIds: string[] },
+  avatarUrl?: string | null,
+) {
+  const allIds = [userId, ...data.participantIds];
+  if (allIds.length > MAX_GROUP_MEMBERS)
+    throw new BadRequestError(`Group cannot have more than ${MAX_GROUP_MEMBERS} members`);
+
+  for (const id of allIds) {
+    const user = await findUserById(id);
+    if (!user) throw new NotFoundError(`User ${id} not found`);
+    if (!user.isVerified) throw new BadRequestError('All group members must be verified');
+  }
+
+  const conversation = await createConversation({
+    type: 'GROUP',
+    name: data.name,
+    description: data.description ?? null,
+    avatarUrl: avatarUrl ?? null,
+    createdBy: userId,
+  });
+
+  await addConversationMembers(
+    conversation.id,
+    allIds.map((id) => ({
+      userId: id,
+      role: id === userId ? 'ADMIN' : 'MEMBER',
+    })),
+  );
+
+  return conversation;
 }
 
 export async function updateGroup(
