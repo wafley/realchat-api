@@ -9,6 +9,7 @@ import {
 } from '../conversations/conversations.repository';
 import { NotFoundError, BadRequestError, ForbiddenError } from '../../utils/errors';
 import { getIO } from '../../socket/index';
+import { MAX_GROUP_MEMBERS } from '../../config/constants';
 
 function displayName(user: { fullName?: string | null; username?: string } | null | undefined) {
   return user?.fullName || user?.username || 'Unknown';
@@ -74,6 +75,8 @@ export async function addMembers(userId: string, groupId: string, userIds: strin
   const newIds = userIds.filter((id) => !existingIds.has(id));
 
   if (newIds.length === 0) throw new BadRequestError('All users are already members');
+  if (members.length + newIds.length > MAX_GROUP_MEMBERS)
+    throw new BadRequestError(`Group cannot have more than ${MAX_GROUP_MEMBERS} members`);
 
   const newUsers: Awaited<ReturnType<typeof findUserById>>[] = [];
   for (const id of newIds) {
