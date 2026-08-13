@@ -305,15 +305,21 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
 
         const newIds = targetIds.filter((id) => !existingIds.has(id));
         if (newIds.length > 0) {
-          await db.insert(messageStatus).values(
-            newIds.map((id) => ({
-              messageId: id,
-              userId,
-              status: 'SEEN' as const,
-              seenAt: now,
-              updatedAt: now,
-            })),
-          );
+          await db
+            .insert(messageStatus)
+            .values(
+              newIds.map((id) => ({
+                messageId: id,
+                userId,
+                status: 'SEEN' as const,
+                seenAt: now,
+                updatedAt: now,
+              })),
+            )
+            .onConflictDoUpdate({
+              target: [messageStatus.messageId, messageStatus.userId],
+              set: { status: 'SEEN', seenAt: now, updatedAt: now },
+            });
         }
 
         const changedIds = [...new Set([...updated.map((row) => row.messageId), ...newIds])];

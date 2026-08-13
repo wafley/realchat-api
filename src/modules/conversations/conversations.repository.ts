@@ -543,15 +543,21 @@ export async function markMessagesSeen(userId: string, messageIds: string[], see
 
   const newIds = messageIds.filter((id) => !existingIds.has(id));
   if (newIds.length > 0) {
-    await db.insert(messageStatus).values(
-      newIds.map((id) => ({
-        messageId: id,
-        userId,
-        status: 'SEEN' as const,
-        seenAt,
-        updatedAt: seenAt,
-      })),
-    );
+    await db
+      .insert(messageStatus)
+      .values(
+        newIds.map((id) => ({
+          messageId: id,
+          userId,
+          status: 'SEEN' as const,
+          seenAt,
+          updatedAt: seenAt,
+        })),
+      )
+      .onConflictDoUpdate({
+        target: [messageStatus.messageId, messageStatus.userId],
+        set: { status: 'SEEN', seenAt, updatedAt: seenAt },
+      });
   }
 
   return [...new Set([...updated.map((row) => row.messageId), ...newIds])];
