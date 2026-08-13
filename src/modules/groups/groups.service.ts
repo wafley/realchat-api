@@ -262,7 +262,6 @@ export async function dismissGroup(userId: string, groupId: string) {
   members.forEach((m) => {
     io.to(`user:${m.userId}`).emit('group:dismissed', { conversationId: groupId });
   });
-  await forceLeaveConversationRoom(userId, groupId);
   const room = `conversation:${groupId}`;
   io.in(room).socketsLeave(room);
 
