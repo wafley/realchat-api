@@ -306,6 +306,22 @@ export async function leaveGroup(userId: string, groupId: string) {
 
   const membersAfter = await findMembersByConversationId(groupId);
   const io = getIO();
+
+  if (membersAfter.length === 0) {
+    await deleteConversation(groupId);
+    io.to(`user:${userId}`).emit('group:dismissed', { conversationId: groupId });
+    const room = `conversation:${groupId}`;
+    io.in(room).socketsLeave(room);
+
+    if (conversation.avatarUrl) {
+      const filename = conversation.avatarUrl.split('/').pop();
+      if (filename) {
+        await fs.unlink(path.join(env.uploadDir, filename)).catch(() => undefined);
+      }
+    }
+    return;
+  }
+
   io.to(`user:${userId}`).emit('group:member-removed', {
     conversationId: groupId,
     removedBy: userId,
