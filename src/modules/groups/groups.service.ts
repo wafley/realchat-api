@@ -11,6 +11,7 @@ import {
 } from '../conversations/conversations.repository';
 import { NotFoundError, BadRequestError, ForbiddenError } from '../../utils/errors';
 import { getIO } from '../../socket/index';
+import { createAndEmitMany } from '../notifications/notifications.service';
 import { MAX_GROUP_MEMBERS } from '../../config/constants';
 import { env } from '../../config/env';
 import { promises as fs } from 'fs';
@@ -81,6 +82,19 @@ export async function createGroup(
   const actor = await findUserById(userId);
   await emitSystemMessage(conversation.id, userId, `${displayName(actor)} created the group`);
 
+  await createAndEmitMany(
+    allIds
+      .filter((id) => id !== userId)
+      .map((id) => ({
+        userId: id,
+        type: 'group_invite',
+        actorId: userId,
+        conversationId: conversation.id,
+        title: 'Grup Baru',
+        body: `@${actor?.username || 'Someone'} membuat grup "${conversation.name || ''}"`,
+      })),
+  );
+
   const io = getIO();
   allIds.forEach((id) => {
     io.to(`user:${id}`).emit('group:created', {
@@ -126,7 +140,7 @@ export async function updateAvatar(userId: string, groupId: string, file: Expres
 }
 
 export async function addMembers(userId: string, groupId: string, userIds: string[]) {
-  const { members } = await validateGroupAdmin(userId, groupId);
+  const { conversation, members } = await validateGroupAdmin(userId, groupId);
 
   const existingIds = new Set(members.map((m) => m.userId));
   const newIds = userIds.filter((id) => !existingIds.has(id));
@@ -169,6 +183,17 @@ export async function addMembers(userId: string, groupId: string, userIds: strin
     groupId,
     userId,
     `${displayName(actor)} added ${newUsers.map((u) => displayName(u)).join(', ')}`,
+  );
+
+  await createAndEmitMany(
+    newIds.map((id) => ({
+      userId: id,
+      type: 'group_invite',
+      actorId: userId,
+      conversationId: groupId,
+      title: 'Grup Baru',
+      body: `@${actor?.username || 'Someone'} menambahkan Anda ke grup "${conversation.name || ''}"`,
+    })),
   );
 
   return { added: newIds.length };
