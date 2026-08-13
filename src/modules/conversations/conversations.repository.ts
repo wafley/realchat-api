@@ -256,8 +256,16 @@ export async function findConversationById(id: string) {
 
 export async function findMembersByConversationId(conversationId: string) {
   return db
-    .select(memberColumns)
+    .select({
+      ...memberColumns,
+      username: users.username,
+      fullName: users.fullName,
+      avatarUrl: users.avatarUrl,
+      isOnline: users.isOnline,
+      lastSeenAt: users.lastSeenAt,
+    })
     .from(conversationMembers)
+    .leftJoin(users, eq(users.id, conversationMembers.userId))
     .where(eq(conversationMembers.conversationId, conversationId));
 }
 
@@ -322,6 +330,14 @@ const pinnedMessageSenderColumns = {
 };
 
 const senderUser = aliasedTable(users, 'sender_user');
+
+export const memberUserColumns = {
+  username: users.username,
+  fullName: users.fullName,
+  avatarUrl: users.avatarUrl,
+  isOnline: users.isOnline,
+  lastSeenAt: users.lastSeenAt,
+};
 
 export async function findMessagesByConversationId(
   conversationId: string,

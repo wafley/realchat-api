@@ -108,6 +108,8 @@ Ulang request yang gagal
 | PUT | `/conversations/:id/mute` | `{ until? }` (ISO datetime) | 200 — `{ mutedUntil }` mute conversation (per-user) |
 | DELETE | `/conversations/:id/mute` | — | 200 — `{ mutedUntil: null }` unmute |
 
+> **`GET /conversations/:id` — detail:** tiap item `members` kini membawa `user: { id, username, fullName, avatarUrl, isOnline, lastSeenAt }` (join ke tabel `users`), selain kolom member (`userId`, `role`, `joinedAt`, `mutedUntil`, `clearedAt`). `lastSeenAt` berupa ISO string atau `null`.
+
 > **`GET /conversations` — chat list:**
 > - `search?` — filter by `conversations.name`, peer `username`/`fullName`, `customName`, atau isi last message.
 > - `cursor?` — **composite cursor** `base64url("<sortKey ISO>|<conversationId>")` dari `nextCursor` halaman sebelumnya (keyset pagination `(sortKey, id)`).

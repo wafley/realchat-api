@@ -122,7 +122,20 @@ export async function getConversationDetail(userId: string, conversationId: stri
 
   const members = await repository.findMembersByConversationId(conversationId);
 
-  return { ...conversation, members };
+  return {
+    ...conversation,
+    members: members.map(({ username, fullName, avatarUrl, isOnline, lastSeenAt, ...member }) => ({
+      ...member,
+      user: {
+        id: member.userId,
+        username,
+        fullName,
+        avatarUrl,
+        isOnline,
+        lastSeenAt: lastSeenAt ? lastSeenAt.toISOString() : null,
+      },
+    })),
+  };
 }
 
 export async function leaveConversation(userId: string, conversationId: string) {
