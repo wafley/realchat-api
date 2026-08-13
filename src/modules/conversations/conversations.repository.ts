@@ -43,7 +43,13 @@ export const memberColumns = {
   clearedAt: conversationMembers.clearedAt,
 };
 
-export async function createConversation(data: { type: string; name?: string; createdBy: string }) {
+export async function createConversation(data: {
+  type: string;
+  name?: string;
+  createdBy: string;
+  description?: string | null;
+  avatarUrl?: string | null;
+}) {
   const [conversation] = await db.insert(conversations).values(data).returning(conversationColumns);
   return conversation;
 }

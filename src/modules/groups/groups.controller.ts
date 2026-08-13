@@ -4,6 +4,16 @@ import * as groupService from './groups.service';
 import { groupIdUserIdSchema } from './groups.validator';
 import { BadRequestError } from '../../utils/errors';
 
+export async function createGroup(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const avatarUrl = req.file ? `/uploads/${req.file.filename}` : null;
+    const result = await groupService.createGroup(req.userId!, req.body, avatarUrl);
+    res.status(201).json({ success: true, message: 'Group created', data: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function updateGroup(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const result = await groupService.updateGroup(req.userId!, req.params.id as string, req.body);

@@ -100,7 +100,7 @@ Ulang request yang gagal
 
 | Method | Endpoint | Body/Params | Response |
 |--------|----------|-------------|----------|
-| POST | `/conversations` | `{ type, participantId }` or `{ type, name, participantIds }` | 201 — conversation |
+| POST | `/conversations` | `{ participantId }` (PRIVATE only — buat grup pakai `POST /groups`) | 201 — conversation |
 | GET | `/conversations` | `?search=&cursor=&limit=20` | 200 — `{ conversations, nextCursor }` |
 | GET | `/conversations/:id` | `:id` (uuid) | 200 — detail + members |
 | DELETE | `/conversations/:id` | `:id` (uuid) | 200 — left conversation |
@@ -199,6 +199,7 @@ Ulang request yang gagal
 
 | Method | Endpoint | Body/Params | Response |
 |--------|----------|-------------|----------|
+| POST | `/groups` | multipart: `name`, `participantIds` (JSON string array, min 2), `description?`, `avatar?` (file) | 201 — created group (creator = ADMIN) |
 | PUT | `/groups/:id` | `{ name?, description? }` | 200 — updated group |
 | PUT | `/groups/:id/avatar` | `avatar` (multipart file) | 200 — updated group |
 | POST | `/groups/:id/members` | `{ userIds: string[] }` | 200 — added members |
@@ -208,8 +209,10 @@ Ulang request yang gagal
 | DELETE | `/groups/:id` | — | 200 — group dismissed (admin only, permanent) |
 
 > **SYSTEM messages otomatis:** event grup tertentu menghasilkan pesan tipe `SYSTEM` (broadcast via `message:new`):
-> - tambah member → `<nama> added <nama-nama>` · hapus member → `<nama> removed <target>` · keluar grup → `<nama> left the group` · ubah role → `<nama> made <target> admin` / `<nama> demoted <target> to member` · rename → `<nama> changed the group name to '<name>'`.
+> - buat grup → `<nama> created the group` · tambah member → `<nama> added <nama-nama>` · hapus member → `<nama> removed <target>` · keluar grup → `<nama> left the group` · ubah role → `<nama> made <target> admin` / `<nama> demoted <target> to member` · rename → `<nama> changed the group name to '<name>'`.
 > - Pesan `SYSTEM` **tidak memiliki `message_status`** → **tidak menambah `unreadCount`**; tidak bisa di-pin/star (ditolak 400); tetap tampil normal di thread chat (`sender` = aktor aksi).
+>
+> **`POST /groups` (create):** multipart `name` + `participantIds` (min 2, total ≥ 3) + optional `description` / `avatar`. Creator jadi `ADMIN`. Setelah create, broadcast `group:created` `{ conversationId, name }` ke room `user:<id>` tiap member (FE lalu `group:join`). GROUP dari `POST /conversations` **dipindah ke sini** — `POST /conversations` kini hanya PRIVATE.
 >
 > **Limit & pembubaran:**
 > - `MAX_GROUP_MEMBERS = 50` — total member grup (saat create maupun add) dibatasi.
