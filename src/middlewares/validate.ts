@@ -4,7 +4,11 @@ import { ZodSchema } from 'zod';
 export function validate(schema: ZodSchema, source: 'body' | 'params' | 'query' = 'body') {
   return (req: Request, _res: Response, next: NextFunction) => {
     try {
-      schema.parse(source === 'body' ? req.body : source === 'params' ? req.params : req.query);
+      if (source === 'body') {
+        req.body = schema.parse(req.body);
+      } else {
+        schema.parse(source === 'params' ? req.params : req.query);
+      }
       next();
     } catch (error) {
       next(error);

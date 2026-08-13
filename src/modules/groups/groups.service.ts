@@ -14,7 +14,7 @@ import { getIO } from '../../socket/index';
 import { createAndEmitMany } from '../notifications/notifications.service';
 import { MAX_GROUP_MEMBERS } from '../../config/constants';
 import { env } from '../../config/env';
-import { promises as fs } from 'fs';
+import { unlinkQuietly } from '../../utils/cleanup';
 import path from 'path';
 
 function displayName(user: { fullName?: string | null; username?: string } | null | undefined) {
@@ -130,20 +130,27 @@ export async function updateGroup(
 }
 
 export async function updateAvatar(userId: string, groupId: string, file: Express.Multer.File) {
-  const { members } = await validateGroupAdmin(userId, groupId);
+  const { conversation, members } = await validateGroupAdmin(userId, groupId);
   const avatarUrl = `/uploads/${file.filename}`;
   const updated = await repository.updateGroupAvatar(groupId, avatarUrl);
   members.forEach((m) => {
     getIO().to(`user:${m.userId}`).emit('group:avatar-updated', updated);
   });
+  if (conversation.avatarUrl) {
+    const filename = conversation.avatarUrl.split('/').pop();
+    if (filename) {
+      await unlinkQuietly(path.join(env.uploadDir, filename));
+    }
+  }
   return updated;
 }
 
 export async function addMembers(userId: string, groupId: string, userIds: string[]) {
   const { conversation, members } = await validateGroupAdmin(userId, groupId);
 
+  const uniqueUserIds = [...new Set(userIds)];
   const existingIds = new Set(members.map((m) => m.userId));
-  const newIds = userIds.filter((id) => !existingIds.has(id));
+  const newIds = uniqueUserIds.filter((id) => !existingIds.has(id));
 
   if (newIds.length === 0) throw new BadRequestError('All users are already members');
   if (members.length + newIds.length > MAX_GROUP_MEMBERS)
@@ -153,6 +160,7 @@ export async function addMembers(userId: string, groupId: string, userIds: strin
   for (const id of newIds) {
     const user = await findUserById(id);
     if (!user) throw new NotFoundError(`User ${id} not found`);
+    if (!user.isVerified) throw new BadRequestError('All group members must be verified');
     newUsers.push(user);
   }
 
@@ -299,6 +307,22 @@ export async function leaveGroup(userId: string, groupId: string) {
     if (nonAdminMembers.length > 0) {
       const newAdmin = nonAdminMembers[0];
       await repository.updateMemberRole(groupId, newAdmin.userId, 'ADMIN');
+
+      const leaverUser = await findUserById(userId);
+      const newAdminUser = await findUserById(newAdmin.userId);
+      getIO()
+        .to(members.filter((m) => m.userId !== userId).map((m) => `user:${m.userId}`))
+        .emit('group:member-role-changed', {
+          conversationId: groupId,
+          targetUserId: newAdmin.userId,
+          newRole: 'ADMIN',
+          changedBy: userId,
+        });
+      await emitSystemMessage(
+        groupId,
+        userId,
+        `${displayName(leaverUser)} made ${displayName(newAdminUser)} admin`,
+      );
     }
   }
 
@@ -306,6 +330,22 @@ export async function leaveGroup(userId: string, groupId: string) {
 
   const membersAfter = await findMembersByConversationId(groupId);
   const io = getIO();
+
+  if (membersAfter.length === 0) {
+    await deleteConversation(groupId);
+    io.to(`user:${userId}`).emit('group:dismissed', { conversationId: groupId });
+    const room = `conversation:${groupId}`;
+    io.in(room).socketsLeave(room);
+
+    if (conversation.avatarUrl) {
+      const filename = conversation.avatarUrl.split('/').pop();
+      if (filename) {
+        await unlinkQuietly(path.join(env.uploadDir, filename));
+      }
+    }
+    return;
+  }
+
   io.to(`user:${userId}`).emit('group:member-removed', {
     conversationId: groupId,
     removedBy: userId,
@@ -339,7 +379,7 @@ export async function dismissGroup(userId: string, groupId: string) {
   if (conversation.avatarUrl) {
     const filename = conversation.avatarUrl.split('/').pop();
     if (filename) {
-      await fs.unlink(path.join(env.uploadDir, filename)).catch(() => undefined);
+      await unlinkQuietly(path.join(env.uploadDir, filename));
     }
   }
 }

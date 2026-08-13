@@ -31,7 +31,13 @@ export const createGroupSchema = z
 
 export const addMembersSchema = z
   .object({
-    userIds: z.array(z.string().uuid()).min(1).max(50),
+    userIds: z
+      .array(z.string().uuid())
+      .min(1)
+      .max(50)
+      .refine((arr) => new Set(arr).size === arr.length, {
+        message: 'Duplicate user IDs are not allowed',
+      }),
   })
   .strict();
 
