@@ -21,6 +21,13 @@ async function emitSystemMessage(conversationId: string, senderId: string, conte
   return message;
 }
 
+async function forceLeaveConversationRoom(userId: string, conversationId: string) {
+  const sockets = await getIO().in(`user:${userId}`).fetchSockets();
+  for (const socket of sockets) {
+    socket.leave(`conversation:${conversationId}`);
+  }
+}
+
 async function validateGroupAdmin(userId: string, groupId: string) {
   const conversation = await findConversationById(groupId);
   if (!conversation) throw new NotFoundError('Group not found');
@@ -154,6 +161,8 @@ export async function removeMember(userId: string, groupId: string, targetUserId
     userId,
     `${displayName(actor)} removed ${displayName(targetUser)}`,
   );
+
+  await forceLeaveConversationRoom(targetUserId, groupId);
 }
 
 export async function changeRole(
@@ -236,4 +245,6 @@ export async function leaveGroup(userId: string, groupId: string) {
 
   const leaver = await findUserById(userId);
   await emitSystemMessage(groupId, userId, `${displayName(leaver)} left the group`);
+
+  await forceLeaveConversationRoom(userId, groupId);
 }
