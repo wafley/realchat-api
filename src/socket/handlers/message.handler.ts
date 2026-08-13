@@ -3,6 +3,7 @@ import db from '../../db/index';
 import { messages } from '../../db/schema/messages';
 import { messageStatus } from '../../db/schema/messageStatus';
 import { conversationMembers } from '../../db/schema/conversationMembers';
+import { conversations } from '../../db/schema/conversations';
 import { eq, and, ne, sql, inArray } from 'drizzle-orm';
 import {
   sendMessageSchema,
@@ -19,9 +20,21 @@ import {
   addStar,
   removeStar,
 } from '../../modules/conversations/conversations.repository';
+import { findUserById, findUserIdsByUsernames } from '../../modules/auth/auth.repository';
+import { createAndEmitMany } from '../../modules/notifications/notifications.service';
 import { env } from '../../config/env';
 import { createMessageRateLimiter, createFixedWindowLimiter } from '../rateLimit';
 import { onlineUsers } from '../onlineUsers';
+
+function extractMentions(content: string): string[] {
+  const tokens = content.match(/(^|[^\w])@([A-Za-z0-9_]{3,30})(?=[\s,.;:!?"')]|$)/g);
+  if (!tokens) return [];
+  const seen = new Set<string>();
+  for (const token of tokens) {
+    seen.add(token.replace(/^[^\w]?@/, ''));
+  }
+  return [...seen];
+}
 
 const messageRateLimiter = createMessageRateLimiter({
   perSecond: env.messageRatePerSecond,
@@ -86,9 +99,10 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
         }
         const { conversationId, content, replyToId } = parsed.data;
 
-        const membership = await db
-          .select()
+        const [membership] = await db
+          .select({ conversationType: conversations.type })
           .from(conversationMembers)
+          .innerJoin(conversations, eq(conversationMembers.conversationId, conversations.id))
           .where(
             and(
               eq(conversationMembers.conversationId, conversationId),
@@ -97,7 +111,7 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
           )
           .limit(1);
 
-        if (membership.length === 0) {
+        if (!membership) {
           callback?.({ error: 'Not a member of this conversation' });
           return;
         }
@@ -161,6 +175,32 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
         }
 
         io.to(`conversation:${conversationId}`).emit('message:new', message);
+
+        if (membership.conversationType === 'GROUP') {
+          const usernames = extractMentions(content);
+          if (usernames.length > 0) {
+            const mentioned = await findUserIdsByUsernames(usernames);
+            if (mentioned.length > 0) {
+              const recipientIdSet = new Set(recipientRows.map((r) => r.userId));
+              const targets = mentioned.filter((m) => recipientIdSet.has(m.id));
+              if (targets.length > 0) {
+                const sender = await findUserById(userId);
+                await createAndEmitMany(
+                  targets.map((t) => ({
+                    userId: t.id,
+                    type: 'mention',
+                    actorId: userId,
+                    conversationId,
+                    messageId: message.id,
+                    title: 'Mention',
+                    body: `@${sender?.username || 'Someone'} menyebut Anda`,
+                  })),
+                );
+              }
+            }
+          }
+        }
+
         callback?.({ data: message });
       } catch {
         callback?.({ error: 'Failed to send message' });

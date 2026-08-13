@@ -33,6 +33,14 @@ export async function findUsersByIds(ids: string[]) {
   return db.select({ id: users.id }).from(users).where(inArray(users.id, ids));
 }
 
+export async function findUserIdsByUsernames(usernames: string[]) {
+  if (usernames.length === 0) return [];
+  return db
+    .select({ id: users.id, username: users.username })
+    .from(users)
+    .where(inArray(users.username, usernames));
+}
+
 export async function saveRefreshToken(data: { userId: string; token: string; expiredAt: Date }) {
   const [refreshToken] = await db.insert(refreshTokens).values(data).returning();
   return refreshToken;
