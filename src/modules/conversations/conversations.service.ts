@@ -135,6 +135,7 @@ export async function getConversations(
       myRole: row.myRole,
       mutedUntil: row.mutedUntil,
       clearedAt: row.clearedAt,
+      unreadCount: row.unreadCount ?? 0,
       lastMessage,
     };
   });
@@ -213,6 +214,12 @@ export async function clearConversation(userId: string, conversationId: string) 
   if (!member) throw new ForbiddenError('You are not a member of this conversation');
 
   const row = await repository.clearConversation(conversationId, userId);
+
+  const incomingIds = await repository.findIncomingMessageIdsByConversation(conversationId, userId);
+  if (incomingIds.length > 0) {
+    await repository.markMessagesSeen(userId, incomingIds, new Date());
+  }
+
   return { clearedAt: row?.clearedAt ? row.clearedAt.toISOString() : null };
 }
 

@@ -112,11 +112,11 @@ Ulang request yang gagal
 > - `search?` — filter by `conversations.name`, peer `username`/`fullName`, `customName`, atau isi last message.
 > - `cursor?` — **composite cursor** `base64url("<sortKey ISO>|<conversationId>")` dari `nextCursor` halaman sebelumnya (keyset pagination `(sortKey, id)`).
 > - `limit?` — 1–50, default 20.
+> - `unreadCount` — jumlah pesan masuk (dari user lain) dengan status belum `SEEN`, dihitung dari `message_status`. Pesan `SYSTEM` dan pesan sendiri tidak dihitung. Turun (bisa `0`) saat mark-read `POST /conversations/:id/read` atau clear `PATCH /conversations/:id/clear`.
 > - Diurutkan berdasarkan aktivitas terakhir (last message → dibuatnya conversation), terbaru dulu.
 > - `search` mencocokkan nama conversation, `username`/`full name` peer, `customName`, atau isi last message. Karakter wildcard (`%`, `_`) dianggap literal.
 > - `displayName`: **PRIVATE** = `customName` → full name peer → username peer → `'Unknown'`; **GROUP** = `name`.
 > - `lastMessage.sender` hanya untuk **PRIVATE**; `isOnline`/`lastSeenAt` hanya untuk **PRIVATE**; `memberCount` hanya untuk **GROUP**; `myRole`/`mutedUntil`/`clearedAt` dari membership milikku.
-> - `unreadCount` belum ada (menyusul di fitur read receipts).
 >
 > **Mute (`PUT/DELETE /conversations/:id/mute`):** per-user, hanya mengubah membership sendiri. `PUT` dengan `until` (ISO, harus di masa depan) → `mutedUntil` = waktu tersebut; **tanpa `until` = mute permanen** (dipetakan ke `now() + 10 tahun` — FE harus memperlakukan `mutedUntil` yang jauh ke masa depan sebagai **"permanen"**, bukan jadwal auto-unmute). `DELETE` mengembalikan `mutedUntil` ke `null` (unmuted). Belum ada enforcement notifikasi push (menyusul di fitur notifikasi); badge unread tetap dihitung untuk conversation yang di-mute.
 >
@@ -140,6 +140,7 @@ Ulang request yang gagal
 >       "myRole": "MEMBER",
 >       "mutedUntil": null,
 >       "clearedAt": null,
+>       "unreadCount": 0,
 >       "lastMessage": {
 >         "id": "uuid",
 >         "content": "halo!",
@@ -166,6 +167,7 @@ Ulang request yang gagal
 >       "myRole": "ADMIN",
 >       "mutedUntil": null,
 >       "clearedAt": null,
+>       "unreadCount": 0,
 >       "lastMessage": null
 >     }
 >   ],
