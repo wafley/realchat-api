@@ -75,7 +75,7 @@ export async function addMembers(userId: string, groupId: string, userIds: strin
 
   if (newIds.length === 0) throw new BadRequestError('All users are already members');
 
-  const newUsers = [];
+  const newUsers: Awaited<ReturnType<typeof findUserById>>[] = [];
   for (const id of newIds) {
     const user = await findUserById(id);
     if (!user) throw new NotFoundError(`User ${id} not found`);

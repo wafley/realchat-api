@@ -207,7 +207,7 @@ Ulang request yang gagal
 | DELETE | `/groups/:id/leave` | — | 200 — left group |
 
 > **SYSTEM messages otomatis:** event grup tertentu menghasilkan pesan tipe `SYSTEM` (broadcast via `message:new`):
-> - tambah member → `<nama> added <nam-nama>` · hapus member → `<nama> removed <target>` · keluar grup → `<nama> left the group` · ubah role → `<nama> made <target> admin` / `<nama> demoted <target> to member` · rename → `<nama> changed the group name to '<name>'`.
+> - tambah member → `<nama> added <nama-nama>` · hapus member → `<nama> removed <target>` · keluar grup → `<nama> left the group` · ubah role → `<nama> made <target> admin` / `<nama> demoted <target> to member` · rename → `<nama> changed the group name to '<name>'`.
 > - Pesan `SYSTEM` **tidak memiliki `message_status`** → **tidak menambah `unreadCount`**; tidak bisa di-pin/star (ditolak 400); tetap tampil normal di thread chat (`sender` = aktor aksi).
 
 ### Contacts (Bearer required)
