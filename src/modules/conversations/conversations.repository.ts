@@ -440,7 +440,7 @@ export async function updateMessageContent(id: string, content: string) {
     .update(messages)
     .set({ content, isEdited: true, editedAt: new Date(), updatedAt: new Date() })
     .where(eq(messages.id, id))
-    .returning(messageColumns);
+    .returning();
   return message || null;
 }
 
@@ -490,7 +490,7 @@ export async function insertMessage(data: {
   content: string;
   type: string;
 }) {
-  const [message] = await db.insert(messages).values(data).returning(messageColumns);
+  const [message] = await db.insert(messages).values(data).returning();
   return message || null;
 }
 
