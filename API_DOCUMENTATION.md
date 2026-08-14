@@ -108,6 +108,8 @@ Ulang request yang gagal
 | PUT | `/conversations/:id/mute` | `{ until? }` (ISO datetime) | 200 — `{ mutedUntil }` mute conversation (per-user) |
 | DELETE | `/conversations/:id/mute` | — | 200 — `{ mutedUntil: null }` unmute |
 
+> **`GET /conversations/:id` — detail:** tiap item `members` kini membawa `user: { id, username, fullName, avatarUrl, isOnline, lastSeenAt }` (join ke tabel `users`), selain kolom member (`userId`, `role`, `joinedAt`, `mutedUntil`, `clearedAt`). `lastSeenAt` berupa ISO string atau `null`.
+
 > **`GET /conversations` — chat list:**
 > - `search?` — filter by `conversations.name`, peer `username`/`fullName`, `customName`, atau isi last message.
 > - `cursor?` — **composite cursor** `base64url("<sortKey ISO>|<conversationId>")` dari `nextCursor` halaman sebelumnya (keyset pagination `(sortKey, id)`).
@@ -190,6 +192,8 @@ Ulang request yang gagal
 | DELETE | `/conversations/:id/messages/:messageId/star` | — | 200 — `{ starredAt: null }` |
 | GET | `/messages/starred` | `?cursor=&limit=50` | 200 — `{ messages, nextCursor }` semua pesan ter-star milik user |
 | POST | `/conversations/:id/read` | — | 200 — `{ updated, seenAt }` tandai semua pesan masuk SEEN |
+
+> **`GET /conversations/:id/messages`:** tiap message kini membawa `sender: { username, fullName, avatarUrl }` (join ke tabel `users`), selain `status` (`SENT`/`DELIVERED`/`SEEN`), `seenAt`, `isStarred`, `starredAt`. Event socket `message:new` (send, forward, SYSTEM) memakai shape yang sama.
 
 > **`GET /conversations/:id/pinned`:** diurutkan `pinnedAt` DESC — pesan yang paling baru di-pin tampil pertama. `pinnedAt` hanya bergeser saat pin/unpin, sehingga mengedit pesan terpin tidak mengubah urutan. Unpin menyetel `pinnedAt` ke `null`. Pesan tipe `SYSTEM` tidak dapat di-pin dan dikecualikan dari daftar.
 >
@@ -308,7 +312,7 @@ const socket = io('http://{{BACKEND_IP}}:3000', {
 
 | Event | Payload | Description |
 |-------|---------|-------------|
-| `message:new` | Row pesan penuh (id, conversationId, senderId, type, content, replyToId, isPinned, isEdited, isDeleted, editedAt, createdAt, updatedAt) | Pesan baru di conversation (SYSTEM & forward memakai shape sama) |
+| `message:new` | Row pesan penuh (id, conversationId, senderId, type, content, replyToId, isPinned, isEdited, isDeleted, editedAt, createdAt, updatedAt) **+ `sender: { username, fullName, avatarUrl }`** | Pesan baru di conversation (SYSTEM & forward memakai shape sama) |
 | `message:status` | `{ messageId, status: 'DELIVERED' \| 'SEEN', userId, seenAt }` | Status delivery/read untuk pengirim |
 | `message:deleted` | `{ conversationId, messageId }` | Message deleted |
 | `message:edited` | Row pesan penuh (termasuk `updatedAt`) | Message edited |

@@ -22,6 +22,7 @@ import {
 } from '../../modules/conversations/conversations.repository';
 import { findUserById, findUserIdsByUsernames } from '../../modules/auth/auth.repository';
 import { createAndEmitMany } from '../../modules/notifications/notifications.service';
+import { toSender } from '../../utils/sender';
 import { env } from '../../config/env';
 import { createMessageRateLimiter, createFixedWindowLimiter } from '../rateLimit';
 import { onlineUsers } from '../onlineUsers';
@@ -174,7 +175,9 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
           }
         }
 
-        io.to(`conversation:${conversationId}`).emit('message:new', message);
+        const messagePayload = { ...message, sender: toSender(await findUserById(userId)) };
+
+        io.to(`conversation:${conversationId}`).emit('message:new', messagePayload);
 
         if (membership.conversationType === 'GROUP') {
           try {
@@ -205,7 +208,7 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
           }
         }
 
-        callback?.({ data: message });
+        callback?.({ data: messagePayload });
       } catch {
         callback?.({ error: 'Failed to send message' });
       }

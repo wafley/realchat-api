@@ -15,6 +15,7 @@ import { createAndEmitMany } from '../notifications/notifications.service';
 import { MAX_GROUP_MEMBERS } from '../../config/constants';
 import { env } from '../../config/env';
 import { unlinkQuietly } from '../../utils/cleanup';
+import { toSender } from '../../utils/sender';
 import path from 'path';
 
 function displayName(user: { fullName?: string | null; username?: string } | null | undefined) {
@@ -23,8 +24,9 @@ function displayName(user: { fullName?: string | null; username?: string } | nul
 
 async function emitSystemMessage(conversationId: string, senderId: string, content: string) {
   const message = await insertMessage({ conversationId, senderId, content, type: 'SYSTEM' });
-  getIO().to(`conversation:${conversationId}`).emit('message:new', message);
-  return message;
+  const payload = { ...message, sender: toSender(await findUserById(senderId)) };
+  getIO().to(`conversation:${conversationId}`).emit('message:new', payload);
+  return payload;
 }
 
 async function forceLeaveConversationRoom(userId: string, conversationId: string) {
