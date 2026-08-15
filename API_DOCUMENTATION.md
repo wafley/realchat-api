@@ -289,6 +289,37 @@ Ulang request yang gagal
 
 ---
 
+## Push Notification (FCM)
+
+### Ringkasan
+- FE mendaftarkan FCM token lewat `POST /devices` (lihat bagian Devices). Saat ada pesan masuk ke user yang **sedang offline**, BE mengirim push notification via Firebase Cloud Messaging. Push **tidak menunggu** — dikerjakan terpisah setelah ACK dikirim ke pengirim.
+
+### Kebijakan
+- Push hanya dikirim ke **penerima yang tidak online** (tidak terhubung socket) pada saat pesan masuk.
+- Pesan ber-type `SYSTEM` tidak memicu push.
+- Member yang **mute** conversation tidak menerima push (tidak memicu apa pun).
+- Pengirim tidak menerima push untuk pesannya sendiri.
+- Satu token FCM hanya milik satu user (ownership pindah saat token didaftarkan ulang akun lain).
+- Token yang sudah tidak terdaftar di FCM (`registration-token-not-registered`) otomatis dihapus.
+- Di mode non-production push **dry-run** (tidak benar-benar dikirim ke FCM); log ber-prefix `[push:dry-run]`.
+
+### Payload push
+```
+data: {
+  conversationId: string,
+  messageId: string,
+  type: 'dm' | 'group',
+  senderId: string,
+  senderName: string,
+}
+notification.title: DM = <senderName>; Group = <senderName> @ <groupName>
+notification.body:  preview isi pesan (~100 karakter)
+```
+
+> **FE:** dedupe push dengan cek `data.conversationId === currentChatId` (pesan di chat yang sedang terbuka sudah tampil realtime via socket `message:new`).
+
+---
+
 ## Socket Events
 
 ### Connection

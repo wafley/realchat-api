@@ -26,6 +26,8 @@ const envSchema = z
     SMTP_PORT: z.coerce.number().default(587),
     SMTP_USER: z.string().default(''),
     SMTP_PASS: z.string().default(''),
+    FIREBASE_SERVICE_ACCOUNT: z.string().optional(),
+    PUSH_DRY_RUN_DELAY_MS: z.coerce.number().int().min(0).default(0),
   })
   .superRefine((data, ctx) => {
     if (data.NODE_ENV === 'production' && (!data.SMTP_USER || !data.SMTP_PASS)) {
@@ -68,4 +70,6 @@ export const env = {
   smtpPort: parsed.data.SMTP_PORT,
   smtpUser: parsed.data.SMTP_USER,
   smtpPass: parsed.data.SMTP_PASS,
+  firebaseServiceAccount: parsed.data.FIREBASE_SERVICE_ACCOUNT,
+  pushDryRunDelayMs: parsed.data.PUSH_DRY_RUN_DELAY_MS,
 };
