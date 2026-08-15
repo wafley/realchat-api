@@ -265,6 +265,15 @@ Ulang request yang gagal
 | PUT | `/notifications/read-all` | — | 200 — success |
 | PUT | `/notifications/:id/read` | `:id` (uuid) | 200 — marked read |
 
+### Devices — Push Token (Bearer required)
+
+| Method | Endpoint | Body/Params | Response |
+|--------|----------|-------------|----------|
+| POST | `/devices` | `{ token, platform: 'android' \| 'web' }` | 201 — registered (upsert; token+user sama → update, token dipakai user lain → pindah ownership) |
+| DELETE | `/devices` | `{ token }` | 200 — unregistered (panggil saat logout / token invalid) |
+
+> Token FCM per-user per-device; satu token hanya milik satu user pada satu waktu (ownership pindah saat token didaftarkan ulang oleh akun lain). Pemakaian push notification: lihat bagian "Push Notification".
+
 ---
 
 ### Search & DM Search (Bearer required)
