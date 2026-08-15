@@ -33,6 +33,7 @@
     "drizzle-orm": "^0.45.2",
     "express": "^5.2.1",
     "express-rate-limit": "^8.5.2",
+    "firebase-admin": "^14.2.0",
     "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.2.0",

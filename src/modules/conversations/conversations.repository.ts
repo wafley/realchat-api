@@ -524,12 +524,10 @@ export async function insertMessageStatuses(
 }
 
 export async function findConversationMemberIds(conversationId: string) {
-  return (
-    await db
-      .select({ userId: conversationMembers.userId })
-      .from(conversationMembers)
-      .where(eq(conversationMembers.conversationId, conversationId))
-  ).map((row) => row.userId);
+  return db
+    .select({ userId: conversationMembers.userId, mutedUntil: conversationMembers.mutedUntil })
+    .from(conversationMembers)
+    .where(eq(conversationMembers.conversationId, conversationId));
 }
 
 export async function findIncomingMessageIdsByConversation(conversationId: string, userId: string) {

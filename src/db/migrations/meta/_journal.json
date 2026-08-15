@@ -99,6 +99,13 @@
       "when": 1786546382783,
       "tag": "0013_giant_squadron_supreme",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1786778445057,
+      "tag": "0014_glossy_wind_dancer",
+      "breakpoints": true
     }
   ]
 }

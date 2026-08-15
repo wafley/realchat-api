@@ -23,6 +23,7 @@ import {
 import { findUserById, findUserIdsByUsernames } from '../../modules/auth/auth.repository';
 import { createAndEmitMany } from '../../modules/notifications/notifications.service';
 import { toSender } from '../../utils/sender';
+import { sendIncomingPush } from '../../modules/devices/devices.service';
 import { env } from '../../config/env';
 import { createMessageRateLimiter, createFixedWindowLimiter } from '../rateLimit';
 import { onlineUsers } from '../onlineUsers';
@@ -101,7 +102,10 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
         const { conversationId, content, replyToId } = parsed.data;
 
         const [membership] = await db
-          .select({ conversationType: conversations.type })
+          .select({
+            conversationType: conversations.type,
+            conversationName: conversations.name,
+          })
           .from(conversationMembers)
           .innerJoin(conversations, eq(conversationMembers.conversationId, conversations.id))
           .where(
@@ -148,7 +152,10 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
         });
 
         const members = await db
-          .select({ userId: conversationMembers.userId })
+          .select({
+            userId: conversationMembers.userId,
+            mutedUntil: conversationMembers.mutedUntil,
+          })
           .from(conversationMembers)
           .where(eq(conversationMembers.conversationId, conversationId));
 
@@ -175,7 +182,8 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
           }
         }
 
-        const messagePayload = { ...message, sender: toSender(await findUserById(userId)) };
+        const senderUser = await findUserById(userId);
+        const messagePayload = { ...message, sender: toSender(senderUser) };
 
         io.to(`conversation:${conversationId}`).emit('message:new', messagePayload);
 
@@ -209,6 +217,26 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
         }
 
         callback?.({ data: messagePayload });
+
+        const offlineTargets = recipientRows
+          .filter((row) => row.status === 'SENT')
+          .map((row) => ({
+            userId: row.userId,
+            mutedUntil: members.find((m) => m.userId === row.userId)?.mutedUntil ?? null,
+          }));
+
+        if (offlineTargets.length > 0) {
+          void sendIncomingPush({
+            conversationId,
+            conversationType: membership.conversationType,
+            conversationName: membership.conversationName,
+            messageId: message.id,
+            senderId: userId,
+            senderName: senderUser?.fullName || senderUser?.username || userId,
+            content,
+            targets: offlineTargets,
+          });
+        }
       } catch {
         callback?.({ error: 'Failed to send message' });
       }

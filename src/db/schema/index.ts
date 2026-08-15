@@ -9,3 +9,4 @@ export { messageStatus } from './messageStatus';
 export { notifications } from './notifications';
 export { blockedUsers } from './blockedUsers';
 export { contacts } from './contacts';
+export { deviceTokens } from './deviceTokens';

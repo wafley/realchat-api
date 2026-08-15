@@ -4,6 +4,7 @@ import { NotFoundError, BadRequestError, ForbiddenError } from '../../utils/erro
 import { toSender } from '../../utils/sender';
 import { getIO } from '../../socket/index';
 import { onlineUsers } from '../../socket/onlineUsers';
+import { sendIncomingPush } from '../devices/devices.service';
 
 export async function createConversation(userId: string, data: { participantId: string }) {
   if (!data.participantId) throw new BadRequestError('participantId is required for private chat');
@@ -333,13 +334,13 @@ export async function forwardMessage(
 
   await repository.insertMessageStatuses([{ messageId: created.id, userId, status: 'SENT' }]);
 
-  const memberIds = await repository.findConversationMemberIds(targetConversationId);
-  const recipientRows = memberIds
-    .filter((id) => id !== userId)
-    .map((id) => ({
+  const memberRows = await repository.findConversationMemberIds(targetConversationId);
+  const recipientRows = memberRows
+    .filter((member) => member.userId !== userId)
+    .map((member) => ({
       messageId: created.id,
-      userId: id,
-      status: onlineUsers.get(id)?.size ? ('DELIVERED' as const) : ('SENT' as const),
+      userId: member.userId,
+      status: onlineUsers.get(member.userId)?.size ? ('DELIVERED' as const) : ('SENT' as const),
     }));
 
   await repository.insertMessageStatuses(recipientRows);
@@ -359,6 +360,31 @@ export async function forwardMessage(
   const createdPayload = { ...created, sender: toSender(senderUser) };
 
   getIO().to(`conversation:${targetConversationId}`).emit('message:new', createdPayload);
+
+  const offlineTargets = recipientRows
+    .filter((row) => row.status === 'SENT')
+    .map((row) => ({
+      userId: row.userId,
+      mutedUntil: memberRows.find((m) => m.userId === row.userId)?.mutedUntil ?? null,
+    }));
+
+  if (offlineTargets.length > 0) {
+    void (async () => {
+      const targetConversation = await repository.findConversationById(targetConversationId);
+      await sendIncomingPush({
+        conversationId: targetConversationId,
+        conversationType: targetConversation?.type ?? 'PRIVATE',
+        conversationName: targetConversation?.name ?? null,
+        messageId: created.id,
+        senderId: userId,
+        senderName: senderUser?.fullName || senderUser?.username || userId,
+        content: message.content,
+        targets: offlineTargets,
+      });
+    })().catch(() => {
+      // Push notification failure must not fail the forward response.
+    });
+  }
 
   return createdPayload;
 }
