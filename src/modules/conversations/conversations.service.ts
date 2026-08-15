@@ -368,7 +368,7 @@ export async function forwardMessage(
       mutedUntil: memberRows.find((m) => m.userId === row.userId)?.mutedUntil ?? null,
     }));
 
-  if (offlineTargets.length > 0) {
+  if (message.type !== 'SYSTEM' && offlineTargets.length > 0) {
     void (async () => {
       const targetConversation = await repository.findConversationById(targetConversationId);
       await sendIncomingPush({

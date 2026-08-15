@@ -37,7 +37,7 @@ export async function sendPush(tokens: string[], payload: PushPayload) {
     return;
   }
 
-  const messaging = getMessaging();
+  const messaging = await getMessaging();
   if (!messaging) {
     console.warn('[push] firebase not configured, skipping push');
     return;
