@@ -272,7 +272,7 @@ Ulang request yang gagal
 | POST | `/devices` | `{ token, platform: 'android' \| 'web' }` | 201 — registered (upsert; token+user sama → update, token dipakai user lain → pindah ownership) |
 | DELETE | `/devices` | `{ token }` | 200 — unregistered (panggil saat logout / token invalid) |
 
-> Token FCM per-user per-device; satu token hanya milik satu user pada satu waktu (ownership pindah saat token didaftarkan ulang oleh akun lain). Pemakaian push notification: lihat bagian "Push Notification".
+> Token FCM per-user per-device; satu token hanya milik satu user pada satu waktu (ownership pindah saat token didaftarkan ulang oleh akun lain). Maksimal **10 token per user** — saat melebihi, token tertua otomatis dihapus (yang terbaru dipertahankan; aman untuk device-sharing). Ownership transfer adalah **accepted risk**: token FCM opak & hanya diketahui pemilik/backend, transfer dibutuhkan agar user baru bisa pakai device yang sama; jika token bocor, efek terburuk hanya push korban nonaktif (bukan kebocoran data). Pemakaian push notification: lihat bagian "Push Notification".
 
 ---
 

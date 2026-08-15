@@ -1,11 +1,15 @@
 import * as repository from './devices.repository';
 import { sendPush, messagePreview } from './fcm.service';
 
+const MAX_DEVICE_TOKENS_PER_USER = 10;
+
 export async function registerDevice(
   userId: string,
   data: { token: string; platform: 'android' | 'web' },
 ) {
-  return repository.upsertDeviceToken(userId, data.token, data.platform);
+  const row = await repository.upsertDeviceToken(userId, data.token, data.platform);
+  await repository.trimTokensForUser(userId, MAX_DEVICE_TOKENS_PER_USER);
+  return row;
 }
 
 export async function unregisterDevice(userId: string, token: string) {
@@ -29,7 +33,8 @@ export async function sendIncomingPush(options: {
 }) {
   try {
     const recipients = options.targets.filter(
-      (t) => t.userId !== options.senderId && !t.mutedUntil,
+      (t) =>
+        t.userId !== options.senderId && (!t.mutedUntil || t.mutedUntil.getTime() <= Date.now()),
     );
     if (recipients.length === 0) return;
 
