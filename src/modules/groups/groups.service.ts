@@ -56,6 +56,8 @@ export async function createGroup(
   avatarUrl?: string | null,
 ) {
   const allIds = [userId, ...data.participantIds];
+  if (data.participantIds.includes(userId))
+    throw new BadRequestError('You cannot add yourself as a participant');
   if (allIds.length > MAX_GROUP_MEMBERS)
     throw new BadRequestError(`Group cannot have more than ${MAX_GROUP_MEMBERS} members`);
 
