@@ -3,9 +3,11 @@ import { findUserById } from '../auth/auth.repository';
 import {
   findConversationById,
   findMembersByConversationId,
-  addMembers as addConversationMembers,
-  createConversation,
-  removeMember as removeConversationMember,
+  createGroupAtomically,
+  addMembersAtomically,
+  removeMemberAtomically,
+  changeRoleAtomically,
+  leaveGroupAtomically,
   insertMessage,
   deleteConversation,
 } from '../conversations/conversations.repository';
@@ -67,16 +69,14 @@ export async function createGroup(
     if (!user.isVerified) throw new BadRequestError('All group members must be verified');
   }
 
-  const conversation = await createConversation({
-    type: 'GROUP',
-    name: data.name,
-    description: data.description ?? null,
-    avatarUrl: avatarUrl ?? null,
-    createdBy: userId,
-  });
-
-  await addConversationMembers(
-    conversation.id,
+  const conversation = await createGroupAtomically(
+    {
+      type: 'GROUP',
+      name: data.name,
+      description: data.description ?? null,
+      avatarUrl: avatarUrl ?? null,
+      createdBy: userId,
+    },
     allIds.map((id) => ({
       userId: id,
       role: id === userId ? 'ADMIN' : 'MEMBER',
@@ -157,8 +157,6 @@ export async function addMembers(userId: string, groupId: string, userIds: strin
   const newIds = uniqueUserIds.filter((id) => !existingIds.has(id));
 
   if (newIds.length === 0) throw new BadRequestError('All users are already members');
-  if (members.length + newIds.length > MAX_GROUP_MEMBERS)
-    throw new BadRequestError(`Group cannot have more than ${MAX_GROUP_MEMBERS} members`);
 
   const newUsers: Awaited<ReturnType<typeof findUserById>>[] = [];
   for (const id of newIds) {
@@ -168,14 +166,12 @@ export async function addMembers(userId: string, groupId: string, userIds: strin
     newUsers.push(user);
   }
 
-  await addConversationMembers(
-    groupId,
-    newIds.map((id) => ({ userId: id, role: 'MEMBER' })),
-  );
+  const addedIds = await addMembersAtomically(groupId, newIds, MAX_GROUP_MEMBERS);
+  const addedUsers = newUsers.filter((u) => addedIds.includes(u.id));
 
   const io = getIO();
 
-  newIds.forEach((id) => {
+  addedIds.forEach((id) => {
     io.to(`user:${id}`).emit('group:member-added', {
       conversationId: groupId,
       addedBy: userId,
@@ -185,7 +181,7 @@ export async function addMembers(userId: string, groupId: string, userIds: strin
   members.forEach((m) => {
     io.to(`user:${m.userId}`).emit('group:member-added', {
       conversationId: groupId,
-      newMembers: newIds,
+      newMembers: addedIds,
       addedBy: userId,
     });
   });
@@ -194,11 +190,11 @@ export async function addMembers(userId: string, groupId: string, userIds: strin
   await emitSystemMessage(
     groupId,
     userId,
-    `${displayName(actor)} added ${newUsers.map((u) => displayName(u)).join(', ')}`,
+    `${displayName(actor)} added ${addedUsers.map((u) => displayName(u)).join(', ')}`,
   );
 
   await createAndEmitMany(
-    newIds.map((id) => ({
+    addedIds.map((id) => ({
       userId: id,
       type: 'group_invite',
       actorId: userId,
@@ -208,7 +204,7 @@ export async function addMembers(userId: string, groupId: string, userIds: strin
     })),
   );
 
-  return { added: newIds.length };
+  return { added: addedIds.length };
 }
 
 export async function removeMember(userId: string, groupId: string, targetUserId: string) {
@@ -216,15 +212,7 @@ export async function removeMember(userId: string, groupId: string, targetUserId
 
   if (targetUserId === userId) throw new BadRequestError('Use /leave to leave the group');
 
-  const target = members.find((m) => m.userId === targetUserId);
-  if (!target) throw new NotFoundError('User is not a member of this group');
-
-  const adminCount = members.filter((m) => m.role === 'ADMIN').length;
-  if (target.role === 'ADMIN' && adminCount <= 1) {
-    throw new BadRequestError('Cannot remove the last admin');
-  }
-
-  await removeConversationMember(groupId, targetUserId);
+  await removeMemberAtomically(groupId, targetUserId);
 
   const io = getIO();
   io.to(`user:${targetUserId}`).emit('group:member-removed', {
@@ -260,19 +248,9 @@ export async function changeRole(
 ) {
   const { members } = await validateGroupAdmin(userId, groupId);
 
-  const target = members.find((m) => m.userId === targetUserId);
-  if (!target) throw new NotFoundError('User is not a member of this group');
-
   if (targetUserId === userId) throw new BadRequestError('You cannot change your own role');
 
-  if (role === 'MEMBER') {
-    const adminCount = members.filter((m) => m.role === 'ADMIN').length;
-    if (target.role === 'ADMIN' && adminCount <= 1) {
-      throw new BadRequestError('Cannot demote the last admin');
-    }
-  }
-
-  await repository.updateMemberRole(groupId, targetUserId, role);
+  await changeRoleAtomically(groupId, targetUserId, role);
 
   const io = getIO();
   members.forEach((m) => {
@@ -301,36 +279,28 @@ export async function leaveGroup(userId: string, groupId: string) {
   if (conversation.type !== 'GROUP') throw new BadRequestError('Not a group conversation');
 
   const members = await findMembersByConversationId(groupId);
-  const currentMember = members.find((m) => m.userId === userId);
-  if (!currentMember) throw new NotFoundError('You are not a member of this group');
+  if (!members.some((m) => m.userId === userId))
+    throw new NotFoundError('You are not a member of this group');
 
-  const adminMembers = members.filter((m) => m.role === 'ADMIN');
+  const { promotedUserId } = await leaveGroupAtomically(groupId, userId);
 
-  if (currentMember.role === 'ADMIN' && adminMembers.length === 1) {
-    const nonAdminMembers = members.filter((m) => m.role === 'MEMBER');
-    if (nonAdminMembers.length > 0) {
-      const newAdmin = nonAdminMembers[0];
-      await repository.updateMemberRole(groupId, newAdmin.userId, 'ADMIN');
-
-      const leaverUser = await findUserById(userId);
-      const newAdminUser = await findUserById(newAdmin.userId);
-      getIO()
-        .to(members.filter((m) => m.userId !== userId).map((m) => `user:${m.userId}`))
-        .emit('group:member-role-changed', {
-          conversationId: groupId,
-          targetUserId: newAdmin.userId,
-          newRole: 'ADMIN',
-          changedBy: userId,
-        });
-      await emitSystemMessage(
-        groupId,
-        userId,
-        `${displayName(leaverUser)} made ${displayName(newAdminUser)} admin`,
-      );
-    }
+  if (promotedUserId) {
+    const leaverUser = await findUserById(userId);
+    const newAdminUser = await findUserById(promotedUserId);
+    getIO()
+      .to(members.filter((m) => m.userId !== userId).map((m) => `user:${m.userId}`))
+      .emit('group:member-role-changed', {
+        conversationId: groupId,
+        targetUserId: promotedUserId,
+        newRole: 'ADMIN',
+        changedBy: userId,
+      });
+    await emitSystemMessage(
+      groupId,
+      userId,
+      `${displayName(leaverUser)} made ${displayName(newAdminUser)} admin`,
+    );
   }
-
-  await removeConversationMember(groupId, userId);
 
   const membersAfter = await findMembersByConversationId(groupId);
   const io = getIO();

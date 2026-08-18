@@ -1,4 +1,5 @@
 import db from '../../db/index';
+import { BadRequestError, NotFoundError } from '../../utils/errors';
 import { conversations } from '../../db/schema/conversations';
 import { conversationMembers } from '../../db/schema/conversationMembers';
 import { messages } from '../../db/schema/messages';
@@ -350,6 +351,148 @@ export async function removeMember(conversationId: string, userId: string) {
     );
 }
 
+export async function createGroupAtomically(
+  data: {
+    type: string;
+    name?: string;
+    createdBy: string;
+    description?: string | null;
+    avatarUrl?: string | null;
+  },
+  members: { userId: string; role: string }[],
+) {
+  return db.transaction(async (tx) => {
+    const [conversation] = await tx
+      .insert(conversations)
+      .values(data)
+      .returning(conversationColumns);
+    await tx.insert(conversationMembers).values(
+      members.map((m) => ({
+        conversationId: conversation.id,
+        userId: m.userId,
+        role: m.role,
+      })),
+    );
+    return conversation;
+  });
+}
+
+export async function addMembersAtomically(
+  conversationId: string,
+  userIds: string[],
+  maxMembers: number,
+) {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${'group:' + conversationId}))`);
+    const existing = await tx
+      .select({ userId: conversationMembers.userId })
+      .from(conversationMembers)
+      .where(eq(conversationMembers.conversationId, conversationId));
+    const existingIds = new Set(existing.map((r) => r.userId));
+    const newIds = userIds.filter((id) => !existingIds.has(id));
+    if (newIds.length === 0) throw new BadRequestError('All users are already members');
+    if (existing.length + newIds.length > maxMembers)
+      throw new BadRequestError(`Group cannot have more than ${maxMembers} members`);
+    await tx
+      .insert(conversationMembers)
+      .values(newIds.map((id) => ({ conversationId, userId: id, role: 'MEMBER' })));
+    return newIds;
+  });
+}
+
+export async function removeMemberAtomically(conversationId: string, targetUserId: string) {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${'group:' + conversationId}))`);
+    const members = await tx
+      .select({ userId: conversationMembers.userId, role: conversationMembers.role })
+      .from(conversationMembers)
+      .where(eq(conversationMembers.conversationId, conversationId));
+    const target = members.find((m) => m.userId === targetUserId);
+    if (!target) throw new NotFoundError('User is not a member of this group');
+    if (target.role === 'ADMIN') {
+      const adminCount = members.filter((m) => m.role === 'ADMIN').length;
+      if (adminCount <= 1) throw new BadRequestError('Cannot remove the last admin');
+    }
+    await tx
+      .delete(conversationMembers)
+      .where(
+        and(
+          eq(conversationMembers.conversationId, conversationId),
+          eq(conversationMembers.userId, targetUserId),
+        ),
+      );
+  });
+}
+
+export async function changeRoleAtomically(
+  conversationId: string,
+  targetUserId: string,
+  role: string,
+) {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${'group:' + conversationId}))`);
+    const members = await tx
+      .select({ userId: conversationMembers.userId, role: conversationMembers.role })
+      .from(conversationMembers)
+      .where(eq(conversationMembers.conversationId, conversationId));
+    const target = members.find((m) => m.userId === targetUserId);
+    if (!target) throw new NotFoundError('User is not a member of this group');
+    if (role === 'MEMBER' && target.role === 'ADMIN') {
+      const adminCount = members.filter((m) => m.role === 'ADMIN').length;
+      if (adminCount <= 1) throw new BadRequestError('Cannot demote the last admin');
+    }
+    await tx
+      .update(conversationMembers)
+      .set({ role })
+      .where(
+        and(
+          eq(conversationMembers.conversationId, conversationId),
+          eq(conversationMembers.userId, targetUserId),
+        ),
+      );
+  });
+}
+
+export async function leaveGroupAtomically(conversationId: string, userId: string) {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${'group:' + conversationId}))`);
+    const members = await tx
+      .select({ userId: conversationMembers.userId, role: conversationMembers.role })
+      .from(conversationMembers)
+      .where(eq(conversationMembers.conversationId, conversationId));
+    const current = members.find((m) => m.userId === userId);
+    if (!current) throw new NotFoundError('You are not a member of this group');
+
+    let promotedUserId: string | null = null;
+    if (current.role === 'ADMIN' && members.filter((m) => m.role === 'ADMIN').length === 1) {
+      const nonAdmin = members.filter((m) => m.role === 'MEMBER');
+      if (nonAdmin.length > 0) {
+        promotedUserId = nonAdmin[0].userId;
+        await tx
+          .update(conversationMembers)
+          .set({ role: 'ADMIN' })
+          .where(
+            and(
+              eq(conversationMembers.conversationId, conversationId),
+              eq(conversationMembers.userId, promotedUserId),
+            ),
+          );
+      }
+    }
+
+    await tx
+      .delete(conversationMembers)
+      .where(
+        and(
+          eq(conversationMembers.conversationId, conversationId),
+          eq(conversationMembers.userId, userId),
+        ),
+      );
+
+    return { promotedUserId };
+  });
+}
+
 const messageColumns = {
   id: messages.id,
   conversationId: messages.conversationId,
@@ -442,8 +585,9 @@ export async function findMessagesByConversationId(
           : statusAgg.statusRank,
       seenAt:
         myStatusAgg && userId
-          ? sql<Date | null>`CASE WHEN ${messages.senderId} = ${userId} THEN ${statusAgg.seenAt} ELSE ${myStatusAgg.seenAt} END`
-              .mapWith((v: unknown) => (v === null || v === undefined ? null : new Date(v as string)))
+          ? sql<Date | null>`CASE WHEN ${messages.senderId} = ${userId} THEN ${statusAgg.seenAt} ELSE ${myStatusAgg.seenAt} END`.mapWith(
+              (v: unknown) => (v === null || v === undefined ? null : new Date(v as string)),
+            )
           : statusAgg.seenAt,
       isStarred: star ? sql<boolean>`${star.messageId} IS NOT NULL` : sql<boolean>`false`,
       starredAt: star ? star.starredAt : sql<Date | null>`NULL`,
