@@ -50,8 +50,12 @@ export function errorHandler(err: Error, req: Request, res: Response, _next: Nex
   }
 
   const pgCode = pgErrorCode(err);
-  if (pgCode === '23505' || pgCode === '23503') {
+  if (pgCode === '23505') {
     res.status(409).json({ success: false, message: 'Conflict: resource already exists' });
+    return;
+  }
+  if (pgCode === '23503') {
+    res.status(404).json({ success: false, message: 'Referenced resource not found' });
     return;
   }
   if (pgCode === '22P02') {

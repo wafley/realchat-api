@@ -403,6 +403,10 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
           callback?.({ error: 'Message not found or unauthorized' });
           return;
         }
+        if (message.type === 'SYSTEM') {
+          callback?.({ error: 'Cannot delete a system message' });
+          return;
+        }
 
         const [membership] = await db
           .select({ id: conversationMembers.id })
