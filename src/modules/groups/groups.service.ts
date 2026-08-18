@@ -211,6 +211,7 @@ export async function removeMember(userId: string, groupId: string, targetUserId
   const io = getIO();
   io.to(`user:${targetUserId}`).emit('group:member-removed', {
     conversationId: groupId,
+    targetUserId,
     removedBy: userId,
   });
   members
@@ -316,6 +317,7 @@ export async function leaveGroup(userId: string, groupId: string) {
 
   io.to(`user:${userId}`).emit('group:member-removed', {
     conversationId: groupId,
+    targetUserId: userId,
     removedBy: userId,
   });
   membersAfter.forEach((m) => {
