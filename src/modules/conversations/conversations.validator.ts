@@ -5,6 +5,25 @@ export const messageIdSchema = z.object({
   messageId: z.string().uuid(),
 });
 
+export const conversationIdParamsSchema = z.object({
+  id: z.string().uuid(),
+});
+
+const emptyStringToUndefined = (value: unknown) =>
+  typeof value === 'string' && value.trim() === '' ? undefined : value;
+
+export const uploadMessageSchema = z
+  .object({
+    caption: z.preprocess(emptyStringToUndefined, z.string().trim().max(5000).optional()),
+    replyToId: z.preprocess(emptyStringToUndefined, z.string().uuid().optional()),
+    duration: z.preprocess((value) => {
+      if (value === undefined || value === null || value === '') return undefined;
+      const number = typeof value === 'number' ? value : Number(value);
+      return Number.isFinite(number) && number >= 0 ? Math.round(number) : undefined;
+    }, z.number().int().min(0).max(86400).optional()),
+  })
+  .strict();
+
 export const editMessageSchema = z
   .object({
     content: z.string().trim().min(1).max(5000),

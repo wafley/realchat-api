@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { verifyJWT } from '../../middlewares/verifyJWT';
 import { validate } from '../../middlewares/validate';
+import { uploadMessageAttachment } from '../../middlewares/upload';
+import { validateMessageUpload } from '../../middlewares/imageValidation';
 import * as validator from './conversations.validator';
 import * as controller from './conversations.controller';
 
@@ -14,6 +16,14 @@ router.post(
 );
 router.get('/', verifyJWT, controller.getConversations);
 router.get('/:id/messages', verifyJWT, controller.getMessages);
+router.post(
+  '/:id/messages',
+  verifyJWT,
+  uploadMessageAttachment.single('file'),
+  validateMessageUpload,
+  validate(validator.uploadMessageSchema),
+  controller.sendMessageWithAttachment,
+);
 router.get('/:id/pinned', verifyJWT, controller.getPinnedMessages);
 router.put(
   '/:id/messages/:messageId',

@@ -1,10 +1,13 @@
 import { Response, NextFunction } from 'express';
 import { AuthRequest } from '../../middlewares/verifyJWT';
+import { BadRequestError } from '../../utils/errors';
 import * as conversationService from './conversations.service';
 import {
   conversationListQuerySchema,
+  conversationIdParamsSchema,
   messageIdSchema,
   paginationSchema,
+  uploadMessageSchema,
 } from './conversations.validator';
 
 export async function createConversation(req: AuthRequest, res: Response, next: NextFunction) {
@@ -98,6 +101,22 @@ export async function getMessages(req: AuthRequest, res: Response, next: NextFun
       limit,
     );
     res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function sendMessageWithAttachment(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const { id } = conversationIdParamsSchema.parse(req.params);
+    const body = uploadMessageSchema.parse(req.body);
+    if (!req.file) throw new BadRequestError('File is required');
+    const result = await conversationService.sendAttachmentMessage(req.userId!, id, body, req.file);
+    res.status(201).json({ success: true, message: 'Message sent', data: result });
   } catch (error) {
     next(error);
   }

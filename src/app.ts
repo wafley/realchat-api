@@ -5,6 +5,7 @@ import cookieParser from 'cookie-parser';
 import compression from 'compression';
 import path from 'path';
 import { env } from './config/env';
+import { ALLOWED_MESSAGE_EXTENSIONS } from './config/constants';
 import routes from './routes/index';
 import { errorHandler } from './middlewares/errorHandler';
 
@@ -20,13 +21,13 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-const UPLOAD_IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
+const UPLOAD_EXTENSIONS = ALLOWED_MESSAGE_EXTENSIONS;
 
 app.use(
   '/uploads',
   (req: Request, res: Response, next: NextFunction) => {
     const ext = path.extname(req.path).toLowerCase();
-    if (!UPLOAD_IMAGE_EXTENSIONS.has(ext)) {
+    if (!UPLOAD_EXTENSIONS.has(ext)) {
       res.status(404).json({ success: false, message: 'Not found' });
       return;
     }

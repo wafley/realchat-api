@@ -43,6 +43,8 @@ const messageRateLimiter = createMessageRateLimiter({
   perMinute: env.messageRatePerMinute,
 });
 
+export { messageRateLimiter };
+
 const seenLimiter = createFixedWindowLimiter({
   windowMs: env.seenThrottleMs,
   max: 1,

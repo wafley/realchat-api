@@ -168,6 +168,10 @@ export async function findConversationList(
       senderId: messages.senderId,
       createdAt: messages.createdAt,
       isDeleted: messages.isDeleted,
+      fileUrl: messages.fileUrl,
+      fileName: messages.fileName,
+      fileSize: messages.fileSize,
+      mimeType: messages.mimeType,
       senderUsername: users.username,
       senderFullName: users.fullName,
       senderAvatarUrl: users.avatarUrl,
@@ -243,6 +247,10 @@ export async function findConversationList(
       lastMessageSenderId: lastMessage.senderId,
       lastMessageCreatedAt: lastMessage.createdAt,
       lastMessageIsDeleted: lastMessage.isDeleted,
+      lastMessageFileUrl: lastMessage.fileUrl,
+      lastMessageFileName: lastMessage.fileName,
+      lastMessageFileSize: lastMessage.fileSize,
+      lastMessageMimeType: lastMessage.mimeType,
       senderUsername: lastMessage.senderUsername,
       senderFullName: lastMessage.senderFullName,
       senderAvatarUrl: lastMessage.senderAvatarUrl,
@@ -488,6 +496,11 @@ const messageColumns = {
   type: messages.type,
   content: messages.content,
   replyToId: messages.replyToId,
+  fileUrl: messages.fileUrl,
+  fileName: messages.fileName,
+  fileSize: messages.fileSize,
+  mimeType: messages.mimeType,
+  duration: messages.duration,
   isPinned: messages.isPinned,
   pinnedAt: messages.pinnedAt,
   isEdited: messages.isEdited,
@@ -721,6 +734,67 @@ export async function insertMessageStatuses(
 ) {
   if (rows.length === 0) return;
   await db.insert(messageStatus).values(rows);
+}
+
+export async function findConversationMembership(conversationId: string, userId: string) {
+  const [row] = await db
+    .select({
+      conversationType: conversations.type,
+      conversationName: conversations.name,
+    })
+    .from(conversationMembers)
+    .innerJoin(conversations, eq(conversationMembers.conversationId, conversations.id))
+    .where(
+      and(
+        eq(conversationMembers.conversationId, conversationId),
+        eq(conversationMembers.userId, userId),
+      ),
+    )
+    .limit(1);
+  return row || null;
+}
+
+export async function insertAttachmentMessageAtomically(
+  conversationId: string,
+  senderId: string,
+  data: {
+    type: string;
+    content: string;
+    replyToId: string | null;
+    fileUrl: string;
+    fileName: string;
+    fileSize: number;
+    mimeType: string;
+    duration: number | null;
+  },
+  recipientStatuses: { userId: string; status: 'DELIVERED' | 'SENT' }[],
+) {
+  return db.transaction(async (tx) => {
+    const [message] = await tx
+      .insert(messages)
+      .values({
+        conversationId,
+        senderId,
+        type: data.type,
+        content: data.content,
+        replyToId: data.replyToId,
+        fileUrl: data.fileUrl,
+        fileName: data.fileName,
+        fileSize: data.fileSize,
+        mimeType: data.mimeType,
+        duration: data.duration,
+      })
+      .returning();
+
+    await tx
+      .insert(messageStatus)
+      .values([
+        { messageId: message.id, userId: senderId, status: 'SENT' },
+        ...recipientStatuses.map((r) => ({ messageId: message.id, ...r })),
+      ]);
+
+    return message;
+  });
 }
 
 export async function forwardMessageAtomically(
