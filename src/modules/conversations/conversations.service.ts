@@ -58,21 +58,24 @@ export async function getConversations(
 
     const avatar = isPrivate ? (row.peerAvatarUrl ?? null) : row.avatarUrl;
 
-    const lastMessage = row.lastMessageId
-      ? {
-          id: row.lastMessageId,
-          content: row.lastMessageContent,
-          type: row.lastMessageType,
-          senderId: row.lastMessageSenderId,
-          sender: {
-            username: row.senderUsername,
-            fullName: row.senderFullName,
-            avatarUrl: row.senderAvatarUrl,
-          },
-          createdAt: row.lastMessageCreatedAt,
-          isDeleted: row.lastMessageIsDeleted,
-        }
-      : null;
+    const clearedAt = row.clearedAt ? new Date(row.clearedAt) : null;
+    const lastMessage =
+      row.lastMessageId &&
+      (!clearedAt || !row.lastMessageCreatedAt || row.lastMessageCreatedAt > clearedAt)
+        ? {
+            id: row.lastMessageId,
+            content: row.lastMessageContent,
+            type: row.lastMessageType,
+            senderId: row.lastMessageSenderId,
+            sender: {
+              username: row.senderUsername,
+              fullName: row.senderFullName,
+              avatarUrl: row.senderAvatarUrl,
+            },
+            createdAt: row.lastMessageCreatedAt,
+            isDeleted: row.lastMessageIsDeleted,
+          }
+        : null;
 
     return {
       id: row.id,
@@ -111,20 +114,28 @@ export async function getConversationDetail(userId: string, conversationId: stri
   if (!member) throw new ForbiddenError('You are not a member of this conversation');
 
   const members = await repository.findMembersByConversationId(conversationId);
+  const me = members.find((m) => m.userId === userId);
 
   return {
     ...conversation,
-    members: members.map(({ username, fullName, avatarUrl, isOnline, lastSeenAt, ...member }) => ({
-      ...member,
-      user: {
-        id: member.userId,
-        username,
-        fullName,
-        avatarUrl,
-        isOnline,
-        lastSeenAt: lastSeenAt ? lastSeenAt.toISOString() : null,
-      },
-    })),
+    mutedUntil: me?.mutedUntil ?? null,
+    clearedAt: me?.clearedAt ?? null,
+    members: members.map(
+      ({ username, fullName, avatarUrl, isOnline, lastSeenAt, id, userId, role, joinedAt }) => ({
+        id,
+        userId,
+        role,
+        joinedAt,
+        user: {
+          id: userId,
+          username,
+          fullName,
+          avatarUrl,
+          isOnline,
+          lastSeenAt: lastSeenAt ? lastSeenAt.toISOString() : null,
+        },
+      }),
+    ),
   };
 }
 
