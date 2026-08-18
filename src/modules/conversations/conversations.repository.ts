@@ -735,6 +735,30 @@ export async function insertMessageStatuses(
   await db.insert(messageStatus).values(rows);
 }
 
+export async function forwardMessageAtomically(
+  targetConversationId: string,
+  senderId: string,
+  content: string,
+  type: string,
+  recipientStatuses: { userId: string; status: 'DELIVERED' | 'SENT' }[],
+) {
+  return db.transaction(async (tx) => {
+    const [message] = await tx
+      .insert(messages)
+      .values({ conversationId: targetConversationId, senderId, content, type })
+      .returning();
+
+    await tx
+      .insert(messageStatus)
+      .values([
+        { messageId: message.id, userId: senderId, status: 'SENT' },
+        ...recipientStatuses.map((r) => ({ messageId: message.id, ...r })),
+      ]);
+
+    return message;
+  });
+}
+
 export async function findConversationMemberIds(conversationId: string) {
   return db
     .select({ userId: conversationMembers.userId, mutedUntil: conversationMembers.mutedUntil })

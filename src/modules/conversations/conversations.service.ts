@@ -237,6 +237,7 @@ export async function editMessage(
   if (message.senderId !== userId) throw new ForbiddenError('You can only edit your own messages');
   if (message.conversationId !== conversationId)
     throw new ForbiddenError('Message does not belong to this conversation');
+  if (message.isDeleted) throw new BadRequestError('Cannot edit a deleted message');
 
   const member = await repository.isMember(conversationId, userId);
   if (!member) throw new ForbiddenError('You are not a member of this conversation');
@@ -331,6 +332,8 @@ export async function forwardMessage(
   if (!message) throw new NotFoundError('Message not found');
   if (message.conversationId !== sourceConversationId)
     throw new ForbiddenError('Message does not belong to this conversation');
+  if (message.isDeleted) throw new BadRequestError('Cannot forward a deleted message');
+  if (message.type === 'SYSTEM') throw new BadRequestError('Cannot forward a system message');
 
   const [sourceMember, targetMember] = await Promise.all([
     repository.isMember(sourceConversationId, userId),
@@ -339,25 +342,21 @@ export async function forwardMessage(
   if (!sourceMember) throw new ForbiddenError('You are not a member of this conversation');
   if (!targetMember) throw new ForbiddenError('You are not a member of the target conversation');
 
-  const created = await repository.insertMessage({
-    conversationId: targetConversationId,
-    senderId: userId,
-    content: message.content,
-    type: message.type,
-  });
-
-  await repository.insertMessageStatuses([{ messageId: created.id, userId, status: 'SENT' }]);
-
   const memberRows = await repository.findConversationMemberIds(targetConversationId);
   const recipientRows = memberRows
     .filter((member) => member.userId !== userId)
     .map((member) => ({
-      messageId: created.id,
       userId: member.userId,
       status: onlineUsers.get(member.userId)?.size ? ('DELIVERED' as const) : ('SENT' as const),
     }));
 
-  await repository.insertMessageStatuses(recipientRows);
+  const created = await repository.forwardMessageAtomically(
+    targetConversationId,
+    userId,
+    message.content,
+    message.type,
+    recipientRows,
+  );
 
   for (const row of recipientRows) {
     if (row.status === 'DELIVERED') {
