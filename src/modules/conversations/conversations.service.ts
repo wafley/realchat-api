@@ -4,6 +4,7 @@ import { findUserById } from '../auth/auth.repository';
 import { NotFoundError, BadRequestError, ForbiddenError } from '../../utils/errors';
 import { toSender } from '../../utils/sender';
 import { getIO } from '../../socket/index';
+import { forceLeaveConversationRoom } from '../../socket/room';
 import { onlineUsers } from '../../socket/onlineUsers';
 import { sendIncomingPush } from '../devices/devices.service';
 
@@ -153,13 +154,6 @@ export async function leaveConversation(userId: string, conversationId: string) 
 
   await repository.removeMember(conversationId, userId);
   await forceLeaveConversationRoom(userId, conversationId);
-}
-
-async function forceLeaveConversationRoom(userId: string, conversationId: string) {
-  const sockets = await getIO().in(`user:${userId}`).fetchSockets();
-  for (const socket of sockets) {
-    socket.leave(`conversation:${conversationId}`);
-  }
 }
 
 export async function getMessages(

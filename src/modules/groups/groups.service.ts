@@ -13,6 +13,7 @@ import {
 } from '../conversations/conversations.repository';
 import { NotFoundError, BadRequestError, ForbiddenError } from '../../utils/errors';
 import { getIO } from '../../socket/index';
+import { forceLeaveConversationRoom } from '../../socket/room';
 import { createAndEmitMany } from '../notifications/notifications.service';
 import { MAX_GROUP_MEMBERS } from '../../config/constants';
 import { env } from '../../config/env';
@@ -29,13 +30,6 @@ async function emitSystemMessage(conversationId: string, senderId: string, conte
   const payload = { ...message, sender: toSender(await findUserById(senderId)) };
   getIO().to(`conversation:${conversationId}`).emit('message:new', payload);
   return payload;
-}
-
-async function forceLeaveConversationRoom(userId: string, conversationId: string) {
-  const sockets = await getIO().in(`user:${userId}`).fetchSockets();
-  for (const socket of sockets) {
-    socket.leave(`conversation:${conversationId}`);
-  }
 }
 
 async function validateGroupAdmin(userId: string, groupId: string) {
