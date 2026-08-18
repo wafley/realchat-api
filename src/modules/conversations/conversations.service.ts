@@ -8,6 +8,8 @@ import { sendIncomingPush } from '../devices/devices.service';
 
 export async function createConversation(userId: string, data: { participantId: string }) {
   if (!data.participantId) throw new BadRequestError('participantId is required for private chat');
+  if (data.participantId === userId)
+    throw new BadRequestError('Cannot start a conversation with yourself');
 
   const participant = await findUserById(data.participantId);
   if (!participant) throw new NotFoundError('Participant not found');

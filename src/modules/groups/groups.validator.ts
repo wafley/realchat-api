@@ -25,7 +25,9 @@ export const createGroupSchema = z
         }
       }
       return value;
-    }, z.array(z.string().uuid()).min(2).max(49)),
+    }, z.array(z.string().uuid()).min(2).max(49).refine((arr) => new Set(arr).size === arr.length, {
+      message: 'Duplicate participant IDs are not allowed',
+    })),
   })
   .strict();
 
