@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { verifyJWT } from '../../middlewares/verifyJWT';
 import { validate } from '../../middlewares/validate';
 import { uploadGroupPhoto } from '../../middlewares/upload';
+import { validateAndRenameImage } from '../../middlewares/imageValidation';
 import * as validator from './groups.validator';
 import * as controller from './groups.controller';
 
@@ -11,11 +12,18 @@ router.post(
   '/',
   verifyJWT,
   uploadGroupPhoto.single('avatar'),
+  validateAndRenameImage,
   validate(validator.createGroupSchema),
   controller.createGroup,
 );
 router.put('/:id', verifyJWT, validate(validator.updateGroupSchema), controller.updateGroup);
-router.put('/:id/avatar', verifyJWT, uploadGroupPhoto.single('avatar'), controller.updateAvatar);
+router.put(
+  '/:id/avatar',
+  verifyJWT,
+  uploadGroupPhoto.single('avatar'),
+  validateAndRenameImage,
+  controller.updateAvatar,
+);
 router.post('/:id/members', verifyJWT, validate(validator.addMembersSchema), controller.addMembers);
 router.delete('/:id/members/:userId', verifyJWT, controller.removeMember);
 router.put(

@@ -1,8 +1,9 @@
-import express, { Request, Response } from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import compression from 'compression';
+import path from 'path';
 import { env } from './config/env';
 import routes from './routes/index';
 import { errorHandler } from './middlewares/errorHandler';
@@ -19,7 +20,25 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-app.use('/uploads', express.static(env.uploadDir));
+const UPLOAD_IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
+
+app.use(
+  '/uploads',
+  (req: Request, res: Response, next: NextFunction) => {
+    const ext = path.extname(req.path).toLowerCase();
+    if (!UPLOAD_IMAGE_EXTENSIONS.has(ext)) {
+      res.status(404).json({ success: false, message: 'Not found' });
+      return;
+    }
+    next();
+  },
+  express.static(env.uploadDir, {
+    index: false,
+    setHeaders: (res) => {
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+    },
+  }),
+);
 
 app.use('/api', routes);
 
