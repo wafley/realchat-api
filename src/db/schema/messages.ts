@@ -1,4 +1,14 @@
-import { pgTable, uuid, varchar, text, timestamp, boolean, index, bigint, integer } from 'drizzle-orm/pg-core';
+import {
+  pgTable,
+  uuid,
+  varchar,
+  text,
+  timestamp,
+  boolean,
+  index,
+  bigint,
+  integer,
+} from 'drizzle-orm/pg-core';
 import { users } from './users';
 import { conversations } from './conversations';
 

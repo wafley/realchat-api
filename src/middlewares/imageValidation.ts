@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { env } from '../config/env';
+import { ALLOWED_MESSAGE_EXTENSIONS } from '../config/constants';
 import { BadRequestError } from '../utils/errors';
 import { unlinkQuietly } from '../utils/cleanup';
 
@@ -69,6 +70,53 @@ export async function validateAndRenameImage(req: Request, _res: Response, next:
     req.file.filename = newFilename;
     req.file.path = newPath;
     req.file.mimetype = MIME_TYPES[type];
+    next();
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function validateMessageUpload(req: Request, _res: Response, next: NextFunction) {
+  try {
+    if (!req.file) {
+      next(new BadRequestError('File is required'));
+      return;
+    }
+
+    const buffer = await fs.readFile(req.file.path);
+    const type = detectImageType(buffer);
+    if (type) {
+      const oldPath = req.file.path;
+      const newFilename = `${path.basename(req.file.filename, path.extname(req.file.filename))}${EXTENSIONS[type]}`;
+      const newPath = path.join(env.uploadDir, newFilename);
+      await fs.rename(oldPath, newPath);
+
+      req.file.filename = newFilename;
+      req.file.path = newPath;
+      req.file.mimetype = MIME_TYPES[type];
+      next();
+      return;
+    }
+
+    const isGif = req.file.mimetype === 'image/gif' && buffer.toString('ascii', 0, 4) === 'GIF8';
+    if (isGif) {
+      next();
+      return;
+    }
+
+    if (req.file.mimetype.startsWith('image/')) {
+      await unlinkQuietly(req.file.path);
+      next(new BadRequestError('File content is not a valid image'));
+      return;
+    }
+
+    const ext = path.extname(req.file.originalname).toLowerCase();
+    if (!ALLOWED_MESSAGE_EXTENSIONS.has(ext)) {
+      await unlinkQuietly(req.file.path);
+      next(new BadRequestError('File extension not allowed'));
+      return;
+    }
+
     next();
   } catch (error) {
     next(error);
