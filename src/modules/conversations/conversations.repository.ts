@@ -556,11 +556,11 @@ export async function findMessagesByConversationId(
           messageId: messageStatus.messageId,
           statusRank:
             sql<number>`MAX(CASE ${messageStatus.status} WHEN 'SEEN' THEN 2 WHEN 'DELIVERED' THEN 1 ELSE 0 END)`.as(
-              'status_rank',
+              'my_status_rank',
             ),
           seenAt: sql<Date | null>`MIN(${messageStatus.seenAt})`
             .mapWith((v: unknown) => (v === null || v === undefined ? null : new Date(v as string)))
-            .as('seen_at'),
+            .as('my_seen_at'),
         })
         .from(messageStatus)
         .where(eq(messageStatus.userId, userId))
