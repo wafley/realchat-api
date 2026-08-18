@@ -25,19 +25,27 @@ function displayName(user: { fullName?: string | null; username?: string } | nul
   return user?.fullName || user?.username || 'Unknown';
 }
 
-async function emitSystemMessage(conversationId: string, senderId: string, content: string) {
+async function emitSystemMessage(
+  conversationId: string,
+  senderId: string,
+  content: string,
+  senderUser?: Awaited<ReturnType<typeof findUserById>> | null,
+) {
   const message = await insertMessage({ conversationId, senderId, content, type: 'SYSTEM' });
-  const payload = { ...message, sender: toSender(await findUserById(senderId)) };
+  const sender = senderUser ?? (await findUserById(senderId));
+  const payload = { ...message, sender: toSender(sender) };
   getIO().to(`conversation:${conversationId}`).emit('message:new', payload);
   return payload;
 }
 
 async function validateGroupAdmin(userId: string, groupId: string) {
-  const conversation = await findConversationById(groupId);
+  const [conversation, members] = await Promise.all([
+    findConversationById(groupId),
+    findMembersByConversationId(groupId),
+  ]);
   if (!conversation) throw new NotFoundError('Group not found');
   if (conversation.type !== 'GROUP') throw new BadRequestError('Not a group conversation');
 
-  const members = await findMembersByConversationId(groupId);
   const currentMember = members.find((m) => m.userId === userId);
   if (!currentMember) throw new ForbiddenError('You are not a member of this group');
   if (currentMember.role !== 'ADMIN')
@@ -78,7 +86,12 @@ export async function createGroup(
   );
 
   const actor = await findUserById(userId);
-  await emitSystemMessage(conversation.id, userId, `${displayName(actor)} created the group`);
+  await emitSystemMessage(
+    conversation.id,
+    userId,
+    `${displayName(actor)} created the group`,
+    actor,
+  );
 
   await createAndEmitMany(
     allIds
@@ -121,6 +134,7 @@ export async function updateGroup(
       conversation.id,
       userId,
       `${displayName(actor)} changed the group name to '${updated.name}'`,
+      actor,
     );
   }
 
@@ -185,6 +199,7 @@ export async function addMembers(userId: string, groupId: string, userIds: strin
     groupId,
     userId,
     `${displayName(actor)} added ${addedUsers.map((u) => displayName(u)).join(', ')}`,
+    actor,
   );
 
   await createAndEmitMany(
@@ -224,12 +239,12 @@ export async function removeMember(userId: string, groupId: string, targetUserId
       });
     });
 
-  const actor = await findUserById(userId);
-  const targetUser = await findUserById(targetUserId);
+  const [actor, targetUser] = await Promise.all([findUserById(userId), findUserById(targetUserId)]);
   await emitSystemMessage(
     groupId,
     userId,
     `${displayName(actor)} removed ${displayName(targetUser)}`,
+    actor,
   );
 
   await forceLeaveConversationRoom(targetUserId, groupId);
@@ -257,14 +272,14 @@ export async function changeRole(
     });
   });
 
-  const actor = await findUserById(userId);
-  const targetUser = await findUserById(targetUserId);
+  const [actor, targetUser] = await Promise.all([findUserById(userId), findUserById(targetUserId)]);
   await emitSystemMessage(
     groupId,
     userId,
     role === 'ADMIN'
       ? `${displayName(actor)} made ${displayName(targetUser)} admin`
       : `${displayName(actor)} demoted ${displayName(targetUser)} to member`,
+    actor,
   );
 }
 
@@ -280,8 +295,10 @@ export async function leaveGroup(userId: string, groupId: string) {
   const { promotedUserId } = await leaveGroupAtomically(groupId, userId);
 
   if (promotedUserId) {
-    const leaverUser = await findUserById(userId);
-    const newAdminUser = await findUserById(promotedUserId);
+    const [leaverUser, newAdminUser] = await Promise.all([
+      findUserById(userId),
+      findUserById(promotedUserId),
+    ]);
     getIO()
       .to(members.filter((m) => m.userId !== userId).map((m) => `user:${m.userId}`))
       .emit('group:member-role-changed', {
@@ -294,6 +311,7 @@ export async function leaveGroup(userId: string, groupId: string) {
       groupId,
       userId,
       `${displayName(leaverUser)} made ${displayName(newAdminUser)} admin`,
+      leaverUser,
     );
   }
 
@@ -329,7 +347,7 @@ export async function leaveGroup(userId: string, groupId: string) {
   });
 
   const leaver = await findUserById(userId);
-  await emitSystemMessage(groupId, userId, `${displayName(leaver)} left the group`);
+  await emitSystemMessage(groupId, userId, `${displayName(leaver)} left the group`, leaver);
 
   await forceLeaveConversationRoom(userId, groupId);
 }
