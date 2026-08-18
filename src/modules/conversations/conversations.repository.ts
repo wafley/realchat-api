@@ -90,6 +90,48 @@ export async function findPrivateConversation(userId1: string, userId2: string) 
   return result || null;
 }
 
+export async function createPrivateConversationIfMissing(userId1: string, userId2: string) {
+  const lockKey = ['dm', userId1, userId2].sort().join(':');
+
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`);
+
+    const c1 = tx
+      .select({ id: conversationMembers.conversationId })
+      .from(conversationMembers)
+      .where(eq(conversationMembers.userId, userId1))
+      .as('c1');
+
+    const [existing] = await tx
+      .select(conversationColumns)
+      .from(conversations)
+      .innerJoin(c1, eq(c1.id, conversations.id))
+      .innerJoin(
+        conversationMembers,
+        and(
+          eq(conversationMembers.conversationId, conversations.id),
+          eq(conversationMembers.userId, userId2),
+        ),
+      )
+      .where(eq(conversations.type, 'PRIVATE'))
+      .limit(1);
+
+    if (existing) return existing;
+
+    const [conversation] = await tx
+      .insert(conversations)
+      .values({ type: 'PRIVATE', createdBy: userId1 })
+      .returning(conversationColumns);
+
+    await tx.insert(conversationMembers).values([
+      { conversationId: conversation.id, userId: userId1, role: 'MEMBER' },
+      { conversationId: conversation.id, userId: userId2, role: 'MEMBER' },
+    ]);
+
+    return conversation;
+  });
+}
+
 export async function findConversationList(
   userId: string,
   options: { search?: string; cursor?: { sortKey: string; id: string }; limit: number },

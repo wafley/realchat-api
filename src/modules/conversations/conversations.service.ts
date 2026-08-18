@@ -16,20 +16,7 @@ export async function createConversation(userId: string, data: { participantId: 
   if (!participant.isVerified)
     throw new BadRequestError('Cannot start a conversation with an unverified user');
 
-  const existing = await repository.findPrivateConversation(userId, data.participantId);
-  if (existing) return existing;
-
-  const conversation = await repository.createConversation({
-    type: 'PRIVATE',
-    createdBy: userId,
-  });
-
-  await repository.addMembers(conversation.id, [
-    { userId, role: 'MEMBER' },
-    { userId: data.participantId, role: 'MEMBER' },
-  ]);
-
-  return conversation;
+  return repository.createPrivateConversationIfMissing(userId, data.participantId);
 }
 
 function encodeCompositeCursor(sortKey: Date, conversationId: string): string {
