@@ -55,18 +55,6 @@ export async function createConversation(data: {
   return conversation;
 }
 
-export async function addMembers(
-  conversationId: string,
-  userIds: { userId: string; role: string }[],
-) {
-  const values = userIds.map((u) => ({
-    conversationId,
-    userId: u.userId,
-    role: u.role,
-  }));
-  return db.insert(conversationMembers).values(values).returning();
-}
-
 export async function findPrivateConversation(userId1: string, userId2: string) {
   const c1 = db
     .select({ id: conversationMembers.conversationId })
