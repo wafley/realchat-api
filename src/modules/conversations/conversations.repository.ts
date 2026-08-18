@@ -365,6 +365,24 @@ export async function findMessagesByConversationId(
     .groupBy(messageStatus.messageId)
     .as('status_agg');
 
+  const myStatusAgg = userId
+    ? db
+        .select({
+          messageId: messageStatus.messageId,
+          statusRank:
+            sql<number>`MAX(CASE ${messageStatus.status} WHEN 'SEEN' THEN 2 WHEN 'DELIVERED' THEN 1 ELSE 0 END)`.as(
+              'status_rank',
+            ),
+          seenAt: sql<Date | null>`MIN(${messageStatus.seenAt})`
+            .mapWith((v: unknown) => (v === null || v === undefined ? null : new Date(v as string)))
+            .as('seen_at'),
+        })
+        .from(messageStatus)
+        .where(eq(messageStatus.userId, userId))
+        .groupBy(messageStatus.messageId)
+        .as('my_status_agg')
+    : undefined;
+
   const star = userId
     ? db
         .select({ messageId: messageStars.messageId, starredAt: messageStars.createdAt })
@@ -376,8 +394,15 @@ export async function findMessagesByConversationId(
   const query = db
     .select({
       ...messageColumns,
-      statusRank: statusAgg.statusRank,
-      seenAt: statusAgg.seenAt,
+      statusRank:
+        myStatusAgg && userId
+          ? sql<number>`CASE WHEN ${messages.senderId} = ${userId} THEN ${statusAgg.statusRank} ELSE ${myStatusAgg.statusRank} END`
+          : statusAgg.statusRank,
+      seenAt:
+        myStatusAgg && userId
+          ? sql<Date | null>`CASE WHEN ${messages.senderId} = ${userId} THEN ${statusAgg.seenAt} ELSE ${myStatusAgg.seenAt} END`
+              .mapWith((v: unknown) => (v === null || v === undefined ? null : new Date(v as string)))
+          : statusAgg.seenAt,
       isStarred: star ? sql<boolean>`${star.messageId} IS NOT NULL` : sql<boolean>`false`,
       starredAt: star ? star.starredAt : sql<Date | null>`NULL`,
       senderUsername: senderUser.username,
@@ -388,6 +413,7 @@ export async function findMessagesByConversationId(
     .leftJoin(statusAgg, eq(statusAgg.messageId, messages.id))
     .leftJoin(senderUser, eq(senderUser.id, messages.senderId));
 
+  if (myStatusAgg) query.leftJoin(myStatusAgg, eq(myStatusAgg.messageId, messages.id));
   if (star) query.leftJoin(star, eq(star.messageId, messages.id));
 
   return query
