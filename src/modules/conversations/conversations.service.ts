@@ -147,6 +147,14 @@ export async function leaveConversation(userId: string, conversationId: string) 
   if (!member) throw new ForbiddenError('You are not a member of this conversation');
 
   await repository.removeMember(conversationId, userId);
+  await forceLeaveConversationRoom(userId, conversationId);
+}
+
+async function forceLeaveConversationRoom(userId: string, conversationId: string) {
+  const sockets = await getIO().in(`user:${userId}`).fetchSockets();
+  for (const socket of sockets) {
+    socket.leave(`conversation:${conversationId}`);
+  }
 }
 
 export async function getMessages(
@@ -230,6 +238,9 @@ export async function editMessage(
   if (message.conversationId !== conversationId)
     throw new ForbiddenError('Message does not belong to this conversation');
 
+  const member = await repository.isMember(conversationId, userId);
+  if (!member) throw new ForbiddenError('You are not a member of this conversation');
+
   const updated = await repository.updateMessageContent(messageId, content);
 
   getIO().to(`conversation:${message.conversationId}`).emit('message:edited', updated);
@@ -244,6 +255,9 @@ export async function deleteMessage(userId: string, conversationId: string, mess
     throw new ForbiddenError('You can only delete your own messages');
   if (message.conversationId !== conversationId)
     throw new ForbiddenError('Message does not belong to this conversation');
+
+  const member = await repository.isMember(conversationId, userId);
+  if (!member) throw new ForbiddenError('You are not a member of this conversation');
 
   await repository.softDeleteMessage(messageId);
 

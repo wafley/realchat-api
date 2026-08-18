@@ -400,6 +400,22 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
           return;
         }
 
+        const [membership] = await db
+          .select({ id: conversationMembers.id })
+          .from(conversationMembers)
+          .where(
+            and(
+              eq(conversationMembers.conversationId, data.conversationId),
+              eq(conversationMembers.userId, userId),
+            ),
+          )
+          .limit(1);
+
+        if (!membership) {
+          callback?.({ error: 'Not a member of this conversation' });
+          return;
+        }
+
         await db
           .update(messages)
           .set({ isDeleted: true, content: '' })
