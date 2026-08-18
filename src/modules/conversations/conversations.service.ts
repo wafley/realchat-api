@@ -237,6 +237,7 @@ export async function editMessage(
   if (message.conversationId !== conversationId)
     throw new ForbiddenError('Message does not belong to this conversation');
   if (message.isDeleted) throw new BadRequestError('Cannot edit a deleted message');
+  if (message.type === 'SYSTEM') throw new BadRequestError('Cannot edit a system message');
 
   const member = await repository.isMember(conversationId, userId);
   if (!member) throw new ForbiddenError('You are not a member of this conversation');
@@ -255,6 +256,7 @@ export async function deleteMessage(userId: string, conversationId: string, mess
     throw new ForbiddenError('You can only delete your own messages');
   if (message.conversationId !== conversationId)
     throw new ForbiddenError('Message does not belong to this conversation');
+  if (message.type === 'SYSTEM') throw new BadRequestError('Cannot delete a system message');
 
   const member = await repository.isMember(conversationId, userId);
   if (!member) throw new ForbiddenError('You are not a member of this conversation');
