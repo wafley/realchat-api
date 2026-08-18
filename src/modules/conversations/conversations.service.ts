@@ -1,12 +1,14 @@
 import * as repository from './conversations.repository';
 import * as groupService from '../groups/groups.service';
 import { findUserById } from '../auth/auth.repository';
-import { NotFoundError, BadRequestError, ForbiddenError } from '../../utils/errors';
+import { NotFoundError, BadRequestError, ForbiddenError, AppError } from '../../utils/errors';
 import { toSender } from '../../utils/sender';
 import { getIO } from '../../socket/index';
 import { forceLeaveConversationRoom } from '../../socket/room';
 import { onlineUsers } from '../../socket/onlineUsers';
 import { sendIncomingPush } from '../devices/devices.service';
+import { messageRateLimiter } from '../../socket/handlers/message.handler';
+import { unlinkQuietly } from '../../utils/cleanup';
 
 export async function createConversation(userId: string, data: { participantId: string }) {
   if (!data.participantId) throw new BadRequestError('participantId is required for private chat');
@@ -19,6 +21,100 @@ export async function createConversation(userId: string, data: { participantId: 
     throw new BadRequestError('Cannot start a conversation with an unverified user');
 
   return repository.createPrivateConversationIfMissing(userId, data.participantId);
+}
+
+export async function sendAttachmentMessage(
+  userId: string,
+  conversationId: string,
+  data: { caption?: string; replyToId?: string; duration?: number },
+  file: Express.Multer.File,
+) {
+  try {
+    if (!messageRateLimiter.allow(userId)) {
+      throw new AppError('Rate limit exceeded. Please slow down.', 429);
+    }
+
+    const membership = await repository.findConversationMembership(conversationId, userId);
+    if (!membership) throw new ForbiddenError('You are not a member of this conversation');
+
+    if (data.replyToId) {
+      const replyMessage = await repository.findMessageById(data.replyToId);
+      if (!replyMessage || replyMessage.conversationId !== conversationId)
+        throw new BadRequestError('Replied message not found in this conversation');
+    }
+
+    const type = file.mimetype.startsWith('image/')
+      ? 'IMAGE'
+      : file.mimetype.startsWith('video/')
+        ? 'VIDEO'
+        : 'FILE';
+
+    const content = data.caption ?? '';
+    const duration = type === 'VIDEO' ? (data.duration ?? null) : null;
+
+    const members = await repository.findConversationMemberIds(conversationId);
+    const recipientRows = members
+      .filter((member) => member.userId !== userId)
+      .map((member) => ({
+        userId: member.userId,
+        mutedUntil: member.mutedUntil,
+        status: onlineUsers.get(member.userId)?.size ? ('DELIVERED' as const) : ('SENT' as const),
+      }));
+
+    const message = await repository.insertAttachmentMessageAtomically(
+      conversationId,
+      userId,
+      {
+        type,
+        content,
+        replyToId: data.replyToId || null,
+        fileUrl: `/uploads/${file.filename}`,
+        fileName: file.originalname,
+        fileSize: file.size,
+        mimeType: file.mimetype,
+        duration,
+      },
+      recipientRows.map(({ userId: recipientId, status }) => ({ userId: recipientId, status })),
+    );
+
+    for (const row of recipientRows) {
+      if (row.status === 'DELIVERED') {
+        getIO().to(`user:${userId}`).emit('message:status', {
+          messageId: message.id,
+          status: 'DELIVERED',
+          userId: row.userId,
+          seenAt: null,
+        });
+      }
+    }
+
+    const senderUser = await findUserById(userId);
+    const messagePayload = { ...message, sender: toSender(senderUser) };
+
+    getIO().to(`conversation:${conversationId}`).emit('message:new', messagePayload);
+
+    const offlineTargets = recipientRows
+      .filter((row) => row.status === 'SENT')
+      .map((row) => ({ userId: row.userId, mutedUntil: row.mutedUntil ?? null }));
+
+    if (offlineTargets.length > 0) {
+      void sendIncomingPush({
+        conversationId,
+        conversationType: membership.conversationType,
+        conversationName: membership.conversationName,
+        messageId: message.id,
+        senderId: userId,
+        senderName: senderUser?.fullName || senderUser?.username || userId,
+        content: content || file.originalname,
+        targets: offlineTargets,
+      });
+    }
+
+    return messagePayload;
+  } catch (error) {
+    await unlinkQuietly(file.path);
+    throw error;
+  }
 }
 
 function encodeCompositeCursor(sortKey: Date, conversationId: string): string {
@@ -76,6 +172,10 @@ export async function getConversations(
             },
             createdAt: row.lastMessageCreatedAt,
             isDeleted: row.lastMessageIsDeleted,
+            fileUrl: row.lastMessageFileUrl ?? null,
+            fileName: row.lastMessageFileName ?? null,
+            fileSize: row.lastMessageFileSize ?? null,
+            mimeType: row.lastMessageMimeType ?? null,
           }
         : null;
 
