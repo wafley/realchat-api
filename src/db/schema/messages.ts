@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, timestamp, boolean, index } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, timestamp, boolean, index, bigint, integer } from 'drizzle-orm/pg-core';
 import { users } from './users';
 import { conversations } from './conversations';
 
@@ -15,6 +15,11 @@ export const messages = pgTable(
     type: varchar('type', { length: 10 }).notNull().default('TEXT'),
     content: text('content').notNull(),
     replyToId: uuid('reply_to_id'),
+    fileUrl: text('file_url'),
+    fileName: text('file_name'),
+    fileSize: bigint('file_size', { mode: 'number' }),
+    mimeType: varchar('mime_type', { length: 100 }),
+    duration: integer('duration'),
     isPinned: boolean('is_pinned').notNull().default(false),
     pinnedAt: timestamp('pinned_at', { withTimezone: true }),
     isEdited: boolean('is_edited').notNull().default(false),
