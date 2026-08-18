@@ -1,4 +1,5 @@
 import db from '../../db/index';
+import { BadRequestError, NotFoundError } from '../../utils/errors';
 import { conversations } from '../../db/schema/conversations';
 import { conversationMembers } from '../../db/schema/conversationMembers';
 import { messages } from '../../db/schema/messages';
@@ -88,6 +89,48 @@ export async function findPrivateConversation(userId1: string, userId2: string) 
     .limit(1);
 
   return result || null;
+}
+
+export async function createPrivateConversationIfMissing(userId1: string, userId2: string) {
+  const lockKey = ['dm', userId1, userId2].sort().join(':');
+
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`);
+
+    const c1 = tx
+      .select({ id: conversationMembers.conversationId })
+      .from(conversationMembers)
+      .where(eq(conversationMembers.userId, userId1))
+      .as('c1');
+
+    const [existing] = await tx
+      .select(conversationColumns)
+      .from(conversations)
+      .innerJoin(c1, eq(c1.id, conversations.id))
+      .innerJoin(
+        conversationMembers,
+        and(
+          eq(conversationMembers.conversationId, conversations.id),
+          eq(conversationMembers.userId, userId2),
+        ),
+      )
+      .where(eq(conversations.type, 'PRIVATE'))
+      .limit(1);
+
+    if (existing) return existing;
+
+    const [conversation] = await tx
+      .insert(conversations)
+      .values({ type: 'PRIVATE', createdBy: userId1 })
+      .returning(conversationColumns);
+
+    await tx.insert(conversationMembers).values([
+      { conversationId: conversation.id, userId: userId1, role: 'MEMBER' },
+      { conversationId: conversation.id, userId: userId2, role: 'MEMBER' },
+    ]);
+
+    return conversation;
+  });
 }
 
 export async function findConversationList(
@@ -308,6 +351,148 @@ export async function removeMember(conversationId: string, userId: string) {
     );
 }
 
+export async function createGroupAtomically(
+  data: {
+    type: string;
+    name?: string;
+    createdBy: string;
+    description?: string | null;
+    avatarUrl?: string | null;
+  },
+  members: { userId: string; role: string }[],
+) {
+  return db.transaction(async (tx) => {
+    const [conversation] = await tx
+      .insert(conversations)
+      .values(data)
+      .returning(conversationColumns);
+    await tx.insert(conversationMembers).values(
+      members.map((m) => ({
+        conversationId: conversation.id,
+        userId: m.userId,
+        role: m.role,
+      })),
+    );
+    return conversation;
+  });
+}
+
+export async function addMembersAtomically(
+  conversationId: string,
+  userIds: string[],
+  maxMembers: number,
+) {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${'group:' + conversationId}))`);
+    const existing = await tx
+      .select({ userId: conversationMembers.userId })
+      .from(conversationMembers)
+      .where(eq(conversationMembers.conversationId, conversationId));
+    const existingIds = new Set(existing.map((r) => r.userId));
+    const newIds = userIds.filter((id) => !existingIds.has(id));
+    if (newIds.length === 0) throw new BadRequestError('All users are already members');
+    if (existing.length + newIds.length > maxMembers)
+      throw new BadRequestError(`Group cannot have more than ${maxMembers} members`);
+    await tx
+      .insert(conversationMembers)
+      .values(newIds.map((id) => ({ conversationId, userId: id, role: 'MEMBER' })));
+    return newIds;
+  });
+}
+
+export async function removeMemberAtomically(conversationId: string, targetUserId: string) {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${'group:' + conversationId}))`);
+    const members = await tx
+      .select({ userId: conversationMembers.userId, role: conversationMembers.role })
+      .from(conversationMembers)
+      .where(eq(conversationMembers.conversationId, conversationId));
+    const target = members.find((m) => m.userId === targetUserId);
+    if (!target) throw new NotFoundError('User is not a member of this group');
+    if (target.role === 'ADMIN') {
+      const adminCount = members.filter((m) => m.role === 'ADMIN').length;
+      if (adminCount <= 1) throw new BadRequestError('Cannot remove the last admin');
+    }
+    await tx
+      .delete(conversationMembers)
+      .where(
+        and(
+          eq(conversationMembers.conversationId, conversationId),
+          eq(conversationMembers.userId, targetUserId),
+        ),
+      );
+  });
+}
+
+export async function changeRoleAtomically(
+  conversationId: string,
+  targetUserId: string,
+  role: string,
+) {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${'group:' + conversationId}))`);
+    const members = await tx
+      .select({ userId: conversationMembers.userId, role: conversationMembers.role })
+      .from(conversationMembers)
+      .where(eq(conversationMembers.conversationId, conversationId));
+    const target = members.find((m) => m.userId === targetUserId);
+    if (!target) throw new NotFoundError('User is not a member of this group');
+    if (role === 'MEMBER' && target.role === 'ADMIN') {
+      const adminCount = members.filter((m) => m.role === 'ADMIN').length;
+      if (adminCount <= 1) throw new BadRequestError('Cannot demote the last admin');
+    }
+    await tx
+      .update(conversationMembers)
+      .set({ role })
+      .where(
+        and(
+          eq(conversationMembers.conversationId, conversationId),
+          eq(conversationMembers.userId, targetUserId),
+        ),
+      );
+  });
+}
+
+export async function leaveGroupAtomically(conversationId: string, userId: string) {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${'group:' + conversationId}))`);
+    const members = await tx
+      .select({ userId: conversationMembers.userId, role: conversationMembers.role })
+      .from(conversationMembers)
+      .where(eq(conversationMembers.conversationId, conversationId));
+    const current = members.find((m) => m.userId === userId);
+    if (!current) throw new NotFoundError('You are not a member of this group');
+
+    let promotedUserId: string | null = null;
+    if (current.role === 'ADMIN' && members.filter((m) => m.role === 'ADMIN').length === 1) {
+      const nonAdmin = members.filter((m) => m.role === 'MEMBER');
+      if (nonAdmin.length > 0) {
+        promotedUserId = nonAdmin[0].userId;
+        await tx
+          .update(conversationMembers)
+          .set({ role: 'ADMIN' })
+          .where(
+            and(
+              eq(conversationMembers.conversationId, conversationId),
+              eq(conversationMembers.userId, promotedUserId),
+            ),
+          );
+      }
+    }
+
+    await tx
+      .delete(conversationMembers)
+      .where(
+        and(
+          eq(conversationMembers.conversationId, conversationId),
+          eq(conversationMembers.userId, userId),
+        ),
+      );
+
+    return { promotedUserId };
+  });
+}
+
 const messageColumns = {
   id: messages.id,
   conversationId: messages.conversationId,
@@ -365,6 +550,24 @@ export async function findMessagesByConversationId(
     .groupBy(messageStatus.messageId)
     .as('status_agg');
 
+  const myStatusAgg = userId
+    ? db
+        .select({
+          messageId: messageStatus.messageId,
+          statusRank:
+            sql<number>`MAX(CASE ${messageStatus.status} WHEN 'SEEN' THEN 2 WHEN 'DELIVERED' THEN 1 ELSE 0 END)`.as(
+              'my_status_rank',
+            ),
+          seenAt: sql<Date | null>`MIN(${messageStatus.seenAt})`
+            .mapWith((v: unknown) => (v === null || v === undefined ? null : new Date(v as string)))
+            .as('my_seen_at'),
+        })
+        .from(messageStatus)
+        .where(eq(messageStatus.userId, userId))
+        .groupBy(messageStatus.messageId)
+        .as('my_status_agg')
+    : undefined;
+
   const star = userId
     ? db
         .select({ messageId: messageStars.messageId, starredAt: messageStars.createdAt })
@@ -376,8 +579,16 @@ export async function findMessagesByConversationId(
   const query = db
     .select({
       ...messageColumns,
-      statusRank: statusAgg.statusRank,
-      seenAt: statusAgg.seenAt,
+      statusRank:
+        myStatusAgg && userId
+          ? sql<number>`CASE WHEN ${messages.senderId} = ${userId} THEN ${statusAgg.statusRank} ELSE ${myStatusAgg.statusRank} END`
+          : statusAgg.statusRank,
+      seenAt:
+        myStatusAgg && userId
+          ? sql<Date | null>`CASE WHEN ${messages.senderId} = ${userId} THEN ${statusAgg.seenAt} ELSE ${myStatusAgg.seenAt} END`.mapWith(
+              (v: unknown) => (v === null || v === undefined ? null : new Date(v as string)),
+            )
+          : statusAgg.seenAt,
       isStarred: star ? sql<boolean>`${star.messageId} IS NOT NULL` : sql<boolean>`false`,
       starredAt: star ? star.starredAt : sql<Date | null>`NULL`,
       senderUsername: senderUser.username,
@@ -388,6 +599,7 @@ export async function findMessagesByConversationId(
     .leftJoin(statusAgg, eq(statusAgg.messageId, messages.id))
     .leftJoin(senderUser, eq(senderUser.id, messages.senderId));
 
+  if (myStatusAgg) query.leftJoin(myStatusAgg, eq(myStatusAgg.messageId, messages.id));
   if (star) query.leftJoin(star, eq(star.messageId, messages.id));
 
   return query
@@ -521,6 +733,30 @@ export async function insertMessageStatuses(
 ) {
   if (rows.length === 0) return;
   await db.insert(messageStatus).values(rows);
+}
+
+export async function forwardMessageAtomically(
+  targetConversationId: string,
+  senderId: string,
+  content: string,
+  type: string,
+  recipientStatuses: { userId: string; status: 'DELIVERED' | 'SENT' }[],
+) {
+  return db.transaction(async (tx) => {
+    const [message] = await tx
+      .insert(messages)
+      .values({ conversationId: targetConversationId, senderId, content, type })
+      .returning();
+
+    await tx
+      .insert(messageStatus)
+      .values([
+        { messageId: message.id, userId: senderId, status: 'SENT' },
+        ...recipientStatuses.map((r) => ({ messageId: message.id, ...r })),
+      ]);
+
+    return message;
+  });
 }
 
 export async function findConversationMemberIds(conversationId: string) {

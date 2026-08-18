@@ -16,20 +16,7 @@ export async function createConversation(userId: string, data: { participantId: 
   if (!participant.isVerified)
     throw new BadRequestError('Cannot start a conversation with an unverified user');
 
-  const existing = await repository.findPrivateConversation(userId, data.participantId);
-  if (existing) return existing;
-
-  const conversation = await repository.createConversation({
-    type: 'PRIVATE',
-    createdBy: userId,
-  });
-
-  await repository.addMembers(conversation.id, [
-    { userId, role: 'MEMBER' },
-    { userId: data.participantId, role: 'MEMBER' },
-  ]);
-
-  return conversation;
+  return repository.createPrivateConversationIfMissing(userId, data.participantId);
 }
 
 function encodeCompositeCursor(sortKey: Date, conversationId: string): string {
@@ -71,21 +58,24 @@ export async function getConversations(
 
     const avatar = isPrivate ? (row.peerAvatarUrl ?? null) : row.avatarUrl;
 
-    const lastMessage = row.lastMessageId
-      ? {
-          id: row.lastMessageId,
-          content: row.lastMessageContent,
-          type: row.lastMessageType,
-          senderId: row.lastMessageSenderId,
-          sender: {
-            username: row.senderUsername,
-            fullName: row.senderFullName,
-            avatarUrl: row.senderAvatarUrl,
-          },
-          createdAt: row.lastMessageCreatedAt,
-          isDeleted: row.lastMessageIsDeleted,
-        }
-      : null;
+    const clearedAt = row.clearedAt ? new Date(row.clearedAt) : null;
+    const lastMessage =
+      row.lastMessageId &&
+      (!clearedAt || !row.lastMessageCreatedAt || row.lastMessageCreatedAt > clearedAt)
+        ? {
+            id: row.lastMessageId,
+            content: row.lastMessageContent,
+            type: row.lastMessageType,
+            senderId: row.lastMessageSenderId,
+            sender: {
+              username: row.senderUsername,
+              fullName: row.senderFullName,
+              avatarUrl: row.senderAvatarUrl,
+            },
+            createdAt: row.lastMessageCreatedAt,
+            isDeleted: row.lastMessageIsDeleted,
+          }
+        : null;
 
     return {
       id: row.id,
@@ -124,20 +114,28 @@ export async function getConversationDetail(userId: string, conversationId: stri
   if (!member) throw new ForbiddenError('You are not a member of this conversation');
 
   const members = await repository.findMembersByConversationId(conversationId);
+  const me = members.find((m) => m.userId === userId);
 
   return {
     ...conversation,
-    members: members.map(({ username, fullName, avatarUrl, isOnline, lastSeenAt, ...member }) => ({
-      ...member,
-      user: {
-        id: member.userId,
-        username,
-        fullName,
-        avatarUrl,
-        isOnline,
-        lastSeenAt: lastSeenAt ? lastSeenAt.toISOString() : null,
-      },
-    })),
+    mutedUntil: me?.mutedUntil ?? null,
+    clearedAt: me?.clearedAt ?? null,
+    members: members.map(
+      ({ username, fullName, avatarUrl, isOnline, lastSeenAt, id, userId, role, joinedAt }) => ({
+        id,
+        userId,
+        role,
+        joinedAt,
+        user: {
+          id: userId,
+          username,
+          fullName,
+          avatarUrl,
+          isOnline,
+          lastSeenAt: lastSeenAt ? lastSeenAt.toISOString() : null,
+        },
+      }),
+    ),
   };
 }
 
@@ -239,6 +237,7 @@ export async function editMessage(
   if (message.senderId !== userId) throw new ForbiddenError('You can only edit your own messages');
   if (message.conversationId !== conversationId)
     throw new ForbiddenError('Message does not belong to this conversation');
+  if (message.isDeleted) throw new BadRequestError('Cannot edit a deleted message');
 
   const member = await repository.isMember(conversationId, userId);
   if (!member) throw new ForbiddenError('You are not a member of this conversation');
@@ -333,6 +332,8 @@ export async function forwardMessage(
   if (!message) throw new NotFoundError('Message not found');
   if (message.conversationId !== sourceConversationId)
     throw new ForbiddenError('Message does not belong to this conversation');
+  if (message.isDeleted) throw new BadRequestError('Cannot forward a deleted message');
+  if (message.type === 'SYSTEM') throw new BadRequestError('Cannot forward a system message');
 
   const [sourceMember, targetMember] = await Promise.all([
     repository.isMember(sourceConversationId, userId),
@@ -341,25 +342,21 @@ export async function forwardMessage(
   if (!sourceMember) throw new ForbiddenError('You are not a member of this conversation');
   if (!targetMember) throw new ForbiddenError('You are not a member of the target conversation');
 
-  const created = await repository.insertMessage({
-    conversationId: targetConversationId,
-    senderId: userId,
-    content: message.content,
-    type: message.type,
-  });
-
-  await repository.insertMessageStatuses([{ messageId: created.id, userId, status: 'SENT' }]);
-
   const memberRows = await repository.findConversationMemberIds(targetConversationId);
   const recipientRows = memberRows
     .filter((member) => member.userId !== userId)
     .map((member) => ({
-      messageId: created.id,
       userId: member.userId,
       status: onlineUsers.get(member.userId)?.size ? ('DELIVERED' as const) : ('SENT' as const),
     }));
 
-  await repository.insertMessageStatuses(recipientRows);
+  const created = await repository.forwardMessageAtomically(
+    targetConversationId,
+    userId,
+    message.content,
+    message.type,
+    recipientRows,
+  );
 
   for (const row of recipientRows) {
     if (row.status === 'DELIVERED') {

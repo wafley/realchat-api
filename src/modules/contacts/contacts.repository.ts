@@ -1,7 +1,9 @@
 import db from '../../db/index';
 import { contacts } from '../../db/schema/contacts';
 import { users } from '../../db/schema/users';
+import { notifications } from '../../db/schema/notifications';
 import { eq, and, desc, asc, inArray, ilike, or } from 'drizzle-orm';
+import type { CreateNotificationData } from '../notifications/notifications.repository';
 
 const contactColumns = {
   id: contacts.id,
@@ -11,32 +13,52 @@ const contactColumns = {
   createdAt: contacts.createdAt,
 };
 
-export async function addContact(userId: string, contactId: string, customName?: string) {
-  const existing = await findContact(userId, contactId);
-  if (existing) return existing;
-
-  const [contact] = await db
-    .insert(contacts)
-    .values({ userId, contactId, customName })
-    .returning(contactColumns);
-  return contact;
+export async function addContactAndNotify(
+  userId: string,
+  contactId: string,
+  customName: string | undefined,
+  notificationsData: CreateNotificationData[],
+) {
+  return db.transaction(async (tx) => {
+    const [contact] = await tx
+      .insert(contacts)
+      .values({ userId, contactId, customName })
+      .returning(contactColumns);
+    if (notificationsData.length > 0) {
+      await tx.insert(notifications).values(notificationsData);
+    }
+    return contact;
+  });
 }
 
-export async function addContactsBulk(userId: string, contactIds: string[]) {
-  const existing = await db
-    .select({ contactId: contacts.contactId })
-    .from(contacts)
-    .where(and(eq(contacts.userId, userId), inArray(contacts.contactId, contactIds)));
+export async function addContactsBulkAndNotify(
+  userId: string,
+  contactIds: string[],
+  notificationsData: CreateNotificationData[],
+) {
+  return db.transaction(async (tx) => {
+    const existing = await tx
+      .select({ contactId: contacts.contactId })
+      .from(contacts)
+      .where(and(eq(contacts.userId, userId), inArray(contacts.contactId, contactIds)));
+    const existingIds = new Set(existing.map((row) => row.contactId));
+    const newIds = contactIds.filter((id) => !existingIds.has(id));
 
-  const existingIds = new Set(existing.map((row) => row.contactId));
-  const newIds = contactIds.filter((id) => !existingIds.has(id));
+    const inserted =
+      newIds.length > 0
+        ? await tx
+            .insert(contacts)
+            .values(newIds.map((contactId) => ({ userId, contactId })))
+            .returning(contactColumns)
+        : [];
 
-  if (newIds.length === 0) return [];
+    const notificationsForNew = notificationsData.filter((n) => newIds.includes(n.userId));
+    if (notificationsForNew.length > 0) {
+      await tx.insert(notifications).values(notificationsForNew);
+    }
 
-  return db
-    .insert(contacts)
-    .values(newIds.map((contactId) => ({ userId, contactId })))
-    .returning(contactColumns);
+    return inserted;
+  });
 }
 
 export async function removeContact(userId: string, contactId: string) {

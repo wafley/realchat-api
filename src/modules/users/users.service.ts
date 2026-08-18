@@ -1,5 +1,5 @@
 import * as repository from './users.repository';
-import { findUserById, findUserByUsername, deleteUserRefreshTokens } from '../auth/auth.repository';
+import { findUserById, findUserByUsername } from '../auth/auth.repository';
 import { comparePassword, hashPassword } from '../../utils/hashPassword';
 import { NotFoundError, ConflictError, BadRequestError } from '../../utils/errors';
 
@@ -86,6 +86,5 @@ export async function changePassword(userId: string, oldPassword: string, newPas
   if (!valid) throw new BadRequestError('Current password is incorrect');
 
   const passwordHash = await hashPassword(newPassword);
-  await repository.changePassword(userId, passwordHash);
-  await deleteUserRefreshTokens(userId);
+  await repository.changePasswordAtomically(userId, passwordHash);
 }

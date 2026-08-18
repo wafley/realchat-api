@@ -134,42 +134,46 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
           }
         }
 
-        const [message] = await db
-          .insert(messages)
-          .values({
-            conversationId,
-            senderId: userId,
-            content,
-            type: 'TEXT',
-            replyToId: replyToId || null,
-          })
-          .returning();
+        const { message, members, recipientRows } = await db.transaction(async (tx) => {
+          const [message] = await tx
+            .insert(messages)
+            .values({
+              conversationId,
+              senderId: userId,
+              content,
+              type: 'TEXT',
+              replyToId: replyToId || null,
+            })
+            .returning();
 
-        await db.insert(messageStatus).values({
-          messageId: message.id,
-          userId,
-          status: 'SENT',
-        });
-
-        const members = await db
-          .select({
-            userId: conversationMembers.userId,
-            mutedUntil: conversationMembers.mutedUntil,
-          })
-          .from(conversationMembers)
-          .where(eq(conversationMembers.conversationId, conversationId));
-
-        const recipientRows = members
-          .filter((member) => member.userId !== userId)
-          .map((member) => ({
+          await tx.insert(messageStatus).values({
             messageId: message.id,
-            userId: member.userId,
-            status: onlineUsers.get(member.userId)?.size ? 'DELIVERED' : 'SENT',
-          }));
+            userId,
+            status: 'SENT',
+          });
 
-        if (recipientRows.length > 0) {
-          await db.insert(messageStatus).values(recipientRows);
-        }
+          const members = await tx
+            .select({
+              userId: conversationMembers.userId,
+              mutedUntil: conversationMembers.mutedUntil,
+            })
+            .from(conversationMembers)
+            .where(eq(conversationMembers.conversationId, conversationId));
+
+          const recipientRows = members
+            .filter((member) => member.userId !== userId)
+            .map((member) => ({
+              messageId: message.id,
+              userId: member.userId,
+              status: onlineUsers.get(member.userId)?.size ? 'DELIVERED' : 'SENT',
+            }));
+
+          if (recipientRows.length > 0) {
+            await tx.insert(messageStatus).values(recipientRows);
+          }
+
+          return { message, members, recipientRows };
+        });
 
         for (const row of recipientRows) {
           if (row.status === 'DELIVERED') {
