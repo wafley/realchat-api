@@ -1,4 +1,5 @@
 import * as repository from './conversations.repository';
+import * as groupService from '../groups/groups.service';
 import { findUserById } from '../auth/auth.repository';
 import { NotFoundError, BadRequestError, ForbiddenError } from '../../utils/errors';
 import { toSender } from '../../utils/sender';
@@ -145,6 +146,10 @@ export async function leaveConversation(userId: string, conversationId: string) 
 
   const member = await repository.isMember(conversationId, userId);
   if (!member) throw new ForbiddenError('You are not a member of this conversation');
+
+  if (conversation.type === 'GROUP') {
+    return groupService.leaveGroup(userId, conversationId);
+  }
 
   await repository.removeMember(conversationId, userId);
   await forceLeaveConversationRoom(userId, conversationId);
