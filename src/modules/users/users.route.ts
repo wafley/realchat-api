@@ -25,6 +25,19 @@ router.put(
   validate(validator.changePasswordSchema),
   controller.changePassword,
 );
+router.get('/me/blocked', verifyJWT, controller.getBlockedUsers);
+router.post(
+  '/:id/block',
+  verifyJWT,
+  validate(validator.userIdSchema, 'params'),
+  controller.blockUser,
+);
+router.delete(
+  '/:id/block',
+  verifyJWT,
+  validate(validator.userIdSchema, 'params'),
+  controller.unblockUser,
+);
 router.get(
   '/:userId/relationship',
   verifyJWT,
