@@ -25,7 +25,7 @@ export async function updateMe(req: AuthRequest, res: Response, next: NextFuncti
 export async function getUserById(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const { id } = userIdSchema.parse(req.params);
-    const result = await userService.getUserById(id);
+    const result = await userService.getUserById(req.userId!, id);
     res.status(200).json({ success: true, data: result });
   } catch (error) {
     next(error);

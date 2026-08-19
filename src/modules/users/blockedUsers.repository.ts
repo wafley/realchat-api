@@ -2,7 +2,7 @@ import db from '../../db/index';
 import { blockedUsers } from '../../db/schema/blockedUsers';
 import { users } from '../../db/schema/users';
 import { conversationMembers } from '../../db/schema/conversationMembers';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, or } from 'drizzle-orm';
 
 export async function insertBlock(blockerId: string, blockedId: string) {
   await db.insert(blockedUsers).values({ blockerId, blockedId });
@@ -62,4 +62,46 @@ export async function isBlockedByAnyMember(conversationId: string, blockedUserId
     )
     .limit(1);
   return !!row;
+}
+
+export async function hasBlockedAnyMember(conversationId: string, blockerUserId: string) {
+  const [row] = await db
+    .select({ id: blockedUsers.id })
+    .from(blockedUsers)
+    .innerJoin(conversationMembers, eq(conversationMembers.userId, blockedUsers.blockedId))
+    .where(
+      and(
+        eq(blockedUsers.blockerId, blockerUserId),
+        eq(conversationMembers.conversationId, conversationId),
+      ),
+    )
+    .limit(1);
+  return !!row;
+}
+
+export async function hasBlockRelation(userIdA: string, userIdB: string) {
+  const [row] = await db
+    .select({ id: blockedUsers.id })
+    .from(blockedUsers)
+    .where(
+      or(
+        and(eq(blockedUsers.blockerId, userIdA), eq(blockedUsers.blockedId, userIdB)),
+        and(eq(blockedUsers.blockerId, userIdB), eq(blockedUsers.blockedId, userIdA)),
+      ),
+    )
+    .limit(1);
+  return !!row;
+}
+
+export async function getBlockRelationUserIds(userId: string) {
+  const rows = await db
+    .select({ blockerId: blockedUsers.blockerId, blockedId: blockedUsers.blockedId })
+    .from(blockedUsers)
+    .where(or(eq(blockedUsers.blockerId, userId), eq(blockedUsers.blockedId, userId)));
+  const ids = new Set<string>();
+  for (const row of rows) {
+    if (row.blockerId !== userId) ids.add(row.blockerId);
+    if (row.blockedId !== userId) ids.add(row.blockedId);
+  }
+  return ids;
 }

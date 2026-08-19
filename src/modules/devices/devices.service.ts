@@ -1,5 +1,6 @@
 import * as repository from './devices.repository';
 import { sendPush, messagePreview } from './fcm.service';
+import { getBlockRelationUserIds } from '../users/blockedUsers.repository';
 
 const MAX_DEVICE_TOKENS_PER_USER = 10;
 
@@ -32,9 +33,12 @@ export async function sendIncomingPush(options: {
   targets: PushTarget[];
 }) {
   try {
+    const blockedWithSender = new Set(await getBlockRelationUserIds(options.senderId));
     const recipients = options.targets.filter(
       (t) =>
-        t.userId !== options.senderId && (!t.mutedUntil || t.mutedUntil.getTime() <= Date.now()),
+        t.userId !== options.senderId &&
+        !blockedWithSender.has(t.userId) &&
+        (!t.mutedUntil || t.mutedUntil.getTime() <= Date.now()),
     );
     if (recipients.length === 0) return;
 

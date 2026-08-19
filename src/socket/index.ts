@@ -5,8 +5,9 @@ import { env } from '../config/env';
 import db from '../db/index';
 import { users } from '../db/schema/users';
 import { conversationMembers } from '../db/schema/conversationMembers';
-import { eq } from 'drizzle-orm';
+import { eq, and, ne, inArray } from 'drizzle-orm';
 import { onlineUsers } from './onlineUsers';
+import * as blockedRepository from '../modules/users/blockedUsers.repository';
 import { setupMessageHandlers, catchUpMessageDelivery } from './handlers/message.handler';
 import { setupTypingHandlers } from './handlers/typing.handler';
 import { setupGroupHandlers } from './handlers/group.handler';
@@ -16,6 +17,37 @@ let io: Server;
 export function getIO(): Server {
   if (!io) throw new Error('Socket.IO not initialized');
   return io;
+}
+
+async function broadcastPresence(
+  server: Server,
+  userId: string,
+  conversationIds: string[],
+  event: 'presence:online' | 'presence:offline',
+  payload: Record<string, unknown>,
+) {
+  if (conversationIds.length === 0) return;
+  try {
+    const memberRows = await db
+      .select({ userId: conversationMembers.userId })
+      .from(conversationMembers)
+      .where(
+        and(
+          inArray(conversationMembers.conversationId, conversationIds),
+          ne(conversationMembers.userId, userId),
+        ),
+      );
+    const blockedIds = await blockedRepository.getBlockRelationUserIds(userId);
+    const recipients = new Set<string>();
+    for (const row of memberRows) {
+      if (!blockedIds.has(row.userId)) recipients.add(row.userId);
+    }
+    for (const id of recipients) {
+      server.to(`user:${id}`).emit(event, { userId, ...payload });
+    }
+  } catch (err) {
+    console.error(`Failed to broadcast presence ${event} for user ${userId}:`, err);
+  }
 }
 
 export function initializeSocket(server: HttpServer) {
@@ -83,9 +115,8 @@ export function initializeSocket(server: HttpServer) {
         // Emit presence only after this socket has joined its conversation
         // rooms, so the event reaches every member (including this socket).
         if (onlineUsers.get(userId)?.size === 1 && socket.connected) {
-          for (const conversationId of userConversations) {
-            io.to(`conversation:${conversationId}`).emit('presence:online', { userId });
-          }
+          void broadcastPresence(io, userId, userConversations, 'presence:online', {});
+          io.to(`user:${userId}`).emit('presence:online', { userId });
           void catchUpMessageDelivery(io, userId).catch((err) => {
             console.error(`Failed to run delivery catch-up for user ${userId}:`, err);
           });
@@ -118,12 +149,9 @@ export function initializeSocket(server: HttpServer) {
 
       onlineUsers.delete(userId);
       const now = new Date();
-      for (const conversationId of userConversations) {
-        io.to(`conversation:${conversationId}`).emit('presence:offline', {
-          userId,
-          lastSeenAt: now.toISOString(),
-        });
-      }
+      void broadcastPresence(io, userId, userConversations, 'presence:offline', {
+        lastSeenAt: now.toISOString(),
+      });
       void db
         .update(users)
         .set({ isOnline: false, lastSeenAt: now })
