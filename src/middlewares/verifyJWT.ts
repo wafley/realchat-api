@@ -20,7 +20,15 @@ export async function verifyJWT(req: AuthRequest, res: Response, next: NextFunct
   const token = authHeader.split(' ')[1];
 
   try {
-    const decoded = jwt.verify(token, env.jwtAccessSecret) as { userId: string };
+    const decoded = jwt.verify(token, env.jwtAccessSecret) as {
+      userId: string;
+      type?: string;
+    };
+
+    if (decoded.type !== 'access') {
+      res.status(401).json({ success: false, message: 'Invalid or expired access token' });
+      return;
+    }
 
     const [user] = await db
       .select({ isVerified: users.isVerified })
