@@ -1,11 +1,24 @@
 import { z } from 'zod';
 
+const safeText = (max: number) =>
+  z
+    .string()
+    .trim()
+    .min(1)
+    .max(max)
+    .regex(/^[^\p{Cc}<>"'&]+$/u, 'Contains disallowed characters');
+
 export const registerSchema = z
   .object({
-    username: z.string().trim().min(3).max(30),
+    username: z
+      .string()
+      .trim()
+      .min(3)
+      .max(30)
+      .regex(/^[A-Za-z0-9_]+$/, 'Username can only contain letters, numbers, and underscores'),
     email: z.string().trim().email(),
     password: z.string().min(6).max(128),
-    fullName: z.string().trim().min(1).max(100).optional(),
+    fullName: safeText(100).optional(),
   })
   .strict();
 
