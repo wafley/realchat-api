@@ -33,7 +33,13 @@ export function initializeSocket(server: HttpServer) {
     }
 
     try {
-      const decoded = jwt.verify(token, env.jwtAccessSecret) as { userId: string };
+      const decoded = jwt.verify(token, env.jwtAccessSecret) as {
+        userId: string;
+        type?: string;
+      };
+      if (decoded.type !== 'access') {
+        return next(new Error('Invalid or expired token'));
+      }
       (socket as Socket & { userId: string }).userId = decoded.userId;
       next();
     } catch {

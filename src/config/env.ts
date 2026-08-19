@@ -6,8 +6,8 @@ const envSchema = z
     PORT: z.coerce.number().default(3000),
     NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
     DATABASE_URL: z.string().url(),
-    JWT_ACCESS_SECRET: z.string().min(1),
-    JWT_REFRESH_SECRET: z.string().min(1),
+    JWT_ACCESS_SECRET: z.string().min(32),
+    JWT_REFRESH_SECRET: z.string().min(32),
     JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
     JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
     FRONTEND_URL: z.string().url().default('http://localhost:5173'),
@@ -35,6 +35,13 @@ const envSchema = z
         code: z.ZodIssueCode.custom,
         path: ['SMTP_USER'],
         message: 'SMTP_USER and SMTP_PASS are required in production',
+      });
+    }
+    if (data.JWT_ACCESS_SECRET === data.JWT_REFRESH_SECRET) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['JWT_REFRESH_SECRET'],
+        message: 'JWT_REFRESH_SECRET must differ from JWT_ACCESS_SECRET',
       });
     }
   });
