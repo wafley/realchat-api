@@ -80,21 +80,19 @@ export async function login(email: string, password: string) {
 }
 
 export async function refresh(oldRefreshToken: string) {
-  const stored = await repository.findRefreshToken(oldRefreshToken);
-  if (!stored) {
+  const userId = await repository.consumeRefreshToken(oldRefreshToken);
+  if (!userId) {
     throw new UnauthorizedError('Invalid or expired refresh token');
   }
 
-  await repository.deleteRefreshToken(oldRefreshToken);
-
-  const accessToken = generateAccessToken({ userId: stored.userId });
-  const newRefreshToken = generateRefreshToken({ userId: stored.userId });
+  const accessToken = generateAccessToken({ userId });
+  const newRefreshToken = generateRefreshToken({ userId });
 
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + 7);
 
   await repository.saveRefreshToken({
-    userId: stored.userId,
+    userId,
     token: newRefreshToken,
     expiredAt: expiresAt,
   });
