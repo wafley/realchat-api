@@ -162,6 +162,12 @@ export async function validateAndRenameImage(req: Request, _res: Response, next:
       return;
     }
 
+    if (MIME_TYPES[type] !== req.file.mimetype) {
+      await unlinkQuietly(req.file.path);
+      next(new BadRequestError('File content does not match the declared file type'));
+      return;
+    }
+
     const oldPath = req.file.path;
     const newFilename = `${path.basename(req.file.filename, path.extname(req.file.filename))}${EXTENSIONS[type]}`;
     const newPath = path.join(env.uploadDir, newFilename);
@@ -186,6 +192,11 @@ export async function validateMessageUpload(req: Request, _res: Response, next: 
     const buffer = await fs.readFile(req.file.path);
     const type = detectImageType(buffer);
     if (type) {
+      if (MIME_TYPES[type] !== req.file.mimetype) {
+        await unlinkQuietly(req.file.path);
+        next(new BadRequestError('File content does not match the declared file type'));
+        return;
+      }
       const oldPath = req.file.path;
       const newFilename = `${path.basename(req.file.filename, path.extname(req.file.filename))}${EXTENSIONS[type]}`;
       const newPath = path.join(env.uploadDir, newFilename);
