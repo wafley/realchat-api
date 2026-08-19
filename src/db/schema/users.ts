@@ -4,7 +4,7 @@ export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
   username: varchar('username', { length: 50 }).notNull().unique(),
   usernameUpdatedAt: timestamp('username_updated_at', { withTimezone: true }),
-  email: varchar('email', { length: 255 }).notNull().unique(),
+  email: varchar('email', { length: 255 }).notNull(),
   passwordHash: text('password_hash').notNull(),
   bio: text('bio'),
   fullName: varchar('full_name', { length: 100 }),
