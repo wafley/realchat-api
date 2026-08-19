@@ -1,7 +1,7 @@
 import db from '../../db/index';
 import { users } from '../../db/schema/users';
 import { refreshTokens } from '../../db/schema/refreshTokens';
-import { eq, and, gt, inArray } from 'drizzle-orm';
+import { eq, and, gt, inArray, sql } from 'drizzle-orm';
 
 export async function createUser(data: {
   username: string;
@@ -14,7 +14,10 @@ export async function createUser(data: {
 }
 
 export async function findUserByEmail(email: string) {
-  const [user] = await db.select().from(users).where(eq(users.email, email));
+  const [user] = await db
+    .select()
+    .from(users)
+    .where(sql`lower(${users.email}) = lower(${email})`);
   return user || null;
 }
 

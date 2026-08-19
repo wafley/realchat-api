@@ -11,7 +11,8 @@ export async function register(data: {
   password: string;
   fullName?: string;
 }) {
-  const existingEmail = await repository.findUserByEmail(data.email);
+  const email = data.email.toLowerCase();
+  const existingEmail = await repository.findUserByEmail(email);
   if (existingEmail) {
     throw new ConflictError('Email already registered');
   }
@@ -24,7 +25,7 @@ export async function register(data: {
   const passwordHash = await hashPassword(data.password);
   const user = await repository.createUser({
     username: data.username,
-    email: data.email,
+    email,
     passwordHash,
     fullName: data.fullName,
   });
@@ -46,7 +47,7 @@ export async function register(data: {
 }
 
 export async function login(email: string, password: string) {
-  const user = await repository.findUserByEmail(email);
+  const user = await repository.findUserByEmail(email.toLowerCase());
   if (!user) {
     throw new UnauthorizedError('Invalid email or password');
   }
@@ -105,7 +106,7 @@ export async function logout(refreshToken: string) {
 }
 
 export async function forgotPassword(email: string) {
-  const user = await repository.findUserByEmail(email);
+  const user = await repository.findUserByEmail(email.toLowerCase());
 
   let resetToken: string | undefined;
 
