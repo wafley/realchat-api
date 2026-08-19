@@ -802,12 +802,19 @@ export async function forwardMessageAtomically(
   senderId: string,
   content: string,
   type: string,
+  file: {
+    fileUrl: string | null;
+    fileName: string | null;
+    fileSize: number | null;
+    mimeType: string | null;
+    duration: number | null;
+  },
   recipientStatuses: { userId: string; status: 'DELIVERED' | 'SENT' }[],
 ) {
   return db.transaction(async (tx) => {
     const [message] = await tx
       .insert(messages)
-      .values({ conversationId: targetConversationId, senderId, content, type })
+      .values({ conversationId: targetConversationId, senderId, content, type, ...file })
       .returning();
 
     await tx

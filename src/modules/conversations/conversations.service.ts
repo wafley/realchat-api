@@ -456,6 +456,13 @@ export async function forwardMessage(
     userId,
     message.content,
     message.type,
+    {
+      fileUrl: message.fileUrl,
+      fileName: message.fileName,
+      fileSize: message.fileSize,
+      mimeType: message.mimeType,
+      duration: message.duration,
+    },
     recipientRows,
   );
 
