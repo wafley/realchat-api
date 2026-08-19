@@ -217,9 +217,11 @@ export async function addMembers(userId: string, groupId: string, userIds: strin
 }
 
 export async function removeMember(userId: string, groupId: string, targetUserId: string) {
-  const { members } = await validateGroupAdmin(userId, groupId);
+  const { conversation, members } = await validateGroupAdmin(userId, groupId);
 
   if (targetUserId === userId) throw new BadRequestError('Use /leave to leave the group');
+  if (conversation.createdBy === targetUserId)
+    throw new ForbiddenError('Cannot remove the group creator');
 
   await removeMemberAtomically(groupId, targetUserId);
 
@@ -256,9 +258,11 @@ export async function changeRole(
   targetUserId: string,
   role: string,
 ) {
-  const { members } = await validateGroupAdmin(userId, groupId);
+  const { conversation, members } = await validateGroupAdmin(userId, groupId);
 
   if (targetUserId === userId) throw new BadRequestError('You cannot change your own role');
+  if (conversation.createdBy === targetUserId)
+    throw new ForbiddenError('Cannot change the group creator role');
 
   await changeRoleAtomically(groupId, targetUserId, role);
 
@@ -292,7 +296,7 @@ export async function leaveGroup(userId: string, groupId: string) {
   if (!members.some((m) => m.userId === userId))
     throw new NotFoundError('You are not a member of this group');
 
-  const { promotedUserId } = await leaveGroupAtomically(groupId, userId);
+  const { promotedUserId, transferredToId } = await leaveGroupAtomically(groupId, userId);
 
   if (promotedUserId) {
     const [leaverUser, newAdminUser] = await Promise.all([
@@ -311,6 +315,26 @@ export async function leaveGroup(userId: string, groupId: string) {
       groupId,
       userId,
       `${displayName(leaverUser)} made ${displayName(newAdminUser)} admin`,
+      leaverUser,
+    );
+  }
+
+  if (transferredToId) {
+    const [leaverUser, newOwnerUser] = await Promise.all([
+      findUserById(userId),
+      findUserById(transferredToId),
+    ]);
+    getIO()
+      .to(members.filter((m) => m.userId !== userId).map((m) => `user:${m.userId}`))
+      .emit('group:ownership-transferred', {
+        conversationId: groupId,
+        newOwnerId: transferredToId,
+        changedBy: userId,
+      });
+    await emitSystemMessage(
+      groupId,
+      userId,
+      `${displayName(leaverUser)} transferred ownership to ${displayName(newOwnerUser)}`,
       leaverUser,
     );
   }
@@ -354,6 +378,9 @@ export async function leaveGroup(userId: string, groupId: string) {
 
 export async function dismissGroup(userId: string, groupId: string) {
   const { conversation, members } = await validateGroupAdmin(userId, groupId);
+
+  if (conversation.createdBy !== userId)
+    throw new ForbiddenError('Only the group creator can dismiss the group');
 
   await deleteConversation(groupId);
 
