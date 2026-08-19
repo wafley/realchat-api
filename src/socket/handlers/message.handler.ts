@@ -21,7 +21,10 @@ import {
   removeStar,
 } from '../../modules/conversations/conversations.repository';
 import { findUserById, findUserIdsByUsernames } from '../../modules/auth/auth.repository';
-import { isBlockedByAnyMember } from '../../modules/users/blockedUsers.repository';
+import {
+  isBlockedByAnyMember,
+  hasBlockedAnyMember,
+} from '../../modules/users/blockedUsers.repository';
 import { createAndEmitMany } from '../../modules/notifications/notifications.service';
 import { toSender } from '../../utils/sender';
 import { sendIncomingPush } from '../../modules/devices/devices.service';
@@ -126,6 +129,14 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
 
         if (await isBlockedByAnyMember(conversationId, userId)) {
           callback?.({ error: 'You are blocked by a member of this conversation' });
+          return;
+        }
+
+        if (
+          membership.conversationType === 'PRIVATE' &&
+          (await hasBlockedAnyMember(conversationId, userId))
+        ) {
+          callback?.({ error: 'You have blocked a member of this conversation' });
           return;
         }
 

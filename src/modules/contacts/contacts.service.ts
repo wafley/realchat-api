@@ -1,7 +1,8 @@
 import * as repository from './contacts.repository';
 import { findUserById, findUserByUsername, findUsersByIds } from '../auth/auth.repository';
-import { NotFoundError, ConflictError, BadRequestError } from '../../utils/errors';
+import { NotFoundError, ConflictError, BadRequestError, ForbiddenError } from '../../utils/errors';
 import { getIO } from '../../socket/index';
+import { hasBlockRelation, getBlockRelationUserIds } from '../users/blockedUsers.repository';
 import type { CreateNotificationData } from '../notifications/notifications.repository';
 
 type ContactActor = { username: string | null; fullName: string | null; avatarUrl: string | null };
@@ -50,6 +51,10 @@ export async function addContactByUsername(myId: string, username: string, custo
   const existing = await repository.findContact(myId, target.id);
   if (existing) throw new ConflictError('User is already your contact');
 
+  if (await hasBlockRelation(myId, target.id)) {
+    throw new ForbiddenError('You cannot add a user you have blocked or who has blocked you');
+  }
+
   return insertContactAndNotify(myId, target.id, customName);
 }
 
@@ -81,6 +86,11 @@ export async function addContactsBulk(myId: string, targetUserIds: string[]) {
     throw new NotFoundError('Some users do not exist');
   }
 
+  const blockedTargets = new Set(await getBlockRelationUserIds(myId));
+  if (uniqueIds.some((id) => blockedTargets.has(id))) {
+    throw new ForbiddenError('You cannot add a user you have blocked or who has blocked you');
+  }
+
   const me = await findUserById(myId);
   const contacts = await repository.addContactsBulkAndNotify(
     myId,
@@ -96,11 +106,18 @@ export async function addContactsBulk(myId: string, targetUserIds: string[]) {
 }
 
 export async function getMyContacts(userId: string, sort?: string, search?: string) {
-  return repository.findContacts(userId, sort, search);
+  const rows = await repository.findContacts(userId, sort, search);
+  const blockedIds = new Set(await getBlockRelationUserIds(userId));
+  return rows.map((row) => ({
+    ...row,
+    isOnline: blockedIds.has(row.id) ? null : row.isOnline,
+    lastSeenAt: blockedIds.has(row.id) ? null : row.lastSeenAt,
+  }));
 }
 
 export async function checkContact(myId: string, targetUserId: string) {
   if (myId === targetUserId) return false;
+  if (await hasBlockRelation(myId, targetUserId)) return false;
 
   const contact = await repository.findContact(myId, targetUserId);
   return Boolean(contact);
@@ -108,6 +125,7 @@ export async function checkContact(myId: string, targetUserId: string) {
 
 export async function getRelationship(myId: string, targetUserId: string) {
   if (myId === targetUserId) return null;
+  if (await hasBlockRelation(myId, targetUserId)) return 'none';
 
   const [iHaveThem, theyHaveMe] = await Promise.all([
     repository.findContact(myId, targetUserId),

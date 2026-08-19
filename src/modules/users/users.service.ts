@@ -124,9 +124,12 @@ export async function updateProfile(
   return updated;
 }
 
-export async function getUserById(targetId: string) {
+export async function getUserById(viewerId: string, targetId: string) {
   const user = await findUserById(targetId);
   if (!user) throw new NotFoundError('User not found');
+
+  const presenceHidden =
+    viewerId !== targetId && (await blockedRepository.hasBlockRelation(viewerId, targetId));
 
   return {
     id: user.id,
@@ -134,8 +137,8 @@ export async function getUserById(targetId: string) {
     fullName: user.fullName,
     avatarUrl: user.avatarUrl,
     statusText: user.statusText,
-    isOnline: user.isOnline,
-    lastSeenAt: user.lastSeenAt,
+    isOnline: presenceHidden ? null : user.isOnline,
+    lastSeenAt: presenceHidden ? null : user.lastSeenAt,
   };
 }
 

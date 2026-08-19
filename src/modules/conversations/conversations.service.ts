@@ -9,7 +9,12 @@ import { onlineUsers } from '../../socket/onlineUsers';
 import { sendIncomingPush } from '../devices/devices.service';
 import { messageRateLimiter } from '../../socket/handlers/message.handler';
 import { unlinkQuietly } from '../../utils/cleanup';
-import { isBlockedByUser, isBlockedByAnyMember } from '../users/blockedUsers.repository';
+import {
+  isBlockedByUser,
+  isBlockedByAnyMember,
+  hasBlockedAnyMember,
+  getBlockRelationUserIds,
+} from '../users/blockedUsers.repository';
 
 export async function createConversation(userId: string, data: { participantId: string }) {
   if (!data.participantId) throw new BadRequestError('participantId is required for private chat');
@@ -23,6 +28,10 @@ export async function createConversation(userId: string, data: { participantId: 
 
   if (await isBlockedByUser(data.participantId, userId)) {
     throw new ForbiddenError('You are blocked by this user');
+  }
+
+  if (await isBlockedByUser(userId, data.participantId)) {
+    throw new ForbiddenError('You have blocked this user');
   }
 
   return repository.createPrivateConversationIfMissing(userId, data.participantId);
@@ -44,6 +53,13 @@ export async function sendAttachmentMessage(
 
     if (await isBlockedByAnyMember(conversationId, userId)) {
       throw new ForbiddenError('You are blocked by a member of this conversation');
+    }
+
+    if (
+      membership.conversationType === 'PRIVATE' &&
+      (await hasBlockedAnyMember(conversationId, userId))
+    ) {
+      throw new ForbiddenError('You have blocked a member of this conversation');
     }
 
     if (data.replyToId) {
@@ -156,8 +172,11 @@ export async function getConversations(
   const hasMore = rows.length > limit;
   const page = hasMore ? rows.slice(0, limit) : rows;
 
+  const blockedIds = await getBlockRelationUserIds(userId);
+
   const conversations = page.map((row) => {
     const isPrivate = row.type === 'PRIVATE';
+    const presenceHidden = isPrivate && row.peerId ? blockedIds.has(row.peerId) : false;
 
     const displayName = isPrivate
       ? row.customName || row.peerFullName || row.peerUsername || 'Unknown'
@@ -198,8 +217,8 @@ export async function getConversations(
       createdAt: row.createdAt,
       displayName,
       avatar,
-      isOnline: isPrivate ? (row.peerIsOnline ?? false) : null,
-      lastSeenAt: isPrivate ? (row.peerLastSeenAt ?? null) : null,
+      isOnline: isPrivate ? (presenceHidden ? null : (row.peerIsOnline ?? false)) : null,
+      lastSeenAt: isPrivate ? (presenceHidden ? null : (row.peerLastSeenAt ?? null)) : null,
       memberCount: isPrivate ? null : (row.memberCount ?? 0),
       myRole: row.myRole,
       mutedUntil: row.mutedUntil,
@@ -226,26 +245,30 @@ export async function getConversationDetail(userId: string, conversationId: stri
 
   const members = await repository.findMembersByConversationId(conversationId);
   const me = members.find((m) => m.userId === userId);
+  const blockedIds = await getBlockRelationUserIds(userId);
 
   return {
     ...conversation,
     mutedUntil: me?.mutedUntil ?? null,
     clearedAt: me?.clearedAt ?? null,
     members: members.map(
-      ({ username, fullName, avatarUrl, isOnline, lastSeenAt, id, userId, role, joinedAt }) => ({
-        id,
-        userId,
-        role,
-        joinedAt,
-        user: {
-          id: userId,
-          username,
-          fullName,
-          avatarUrl,
-          isOnline,
-          lastSeenAt: lastSeenAt ? lastSeenAt.toISOString() : null,
-        },
-      }),
+      ({ username, fullName, avatarUrl, isOnline, lastSeenAt, id, userId, role, joinedAt }) => {
+        const presenceHidden = blockedIds.has(userId);
+        return {
+          id,
+          userId,
+          role,
+          joinedAt,
+          user: {
+            id: userId,
+            username,
+            fullName,
+            avatarUrl,
+            isOnline: presenceHidden ? null : isOnline,
+            lastSeenAt: presenceHidden ? null : lastSeenAt ? lastSeenAt.toISOString() : null,
+          },
+        };
+      },
     ),
   };
 }
@@ -452,6 +475,17 @@ export async function forwardMessage(
   if (!sourceMember) throw new ForbiddenError('You are not a member of this conversation');
   if (!targetMember) throw new ForbiddenError('You are not a member of the target conversation');
 
+  const targetConversation = await repository.findConversationById(targetConversationId);
+  if (await isBlockedByAnyMember(targetConversationId, userId)) {
+    throw new ForbiddenError('You are blocked by a member of the target conversation');
+  }
+  if (
+    targetConversation?.type === 'PRIVATE' &&
+    (await hasBlockedAnyMember(targetConversationId, userId))
+  ) {
+    throw new ForbiddenError('You have blocked a member of the target conversation');
+  }
+
   const memberRows = await repository.findConversationMemberIds(targetConversationId);
   const recipientRows = memberRows
     .filter((member) => member.userId !== userId)
@@ -500,7 +534,6 @@ export async function forwardMessage(
 
   if (message.type !== 'SYSTEM' && offlineTargets.length > 0) {
     void (async () => {
-      const targetConversation = await repository.findConversationById(targetConversationId);
       await sendIncomingPush({
         conversationId: targetConversationId,
         conversationType: targetConversation?.type ?? 'PRIVATE',

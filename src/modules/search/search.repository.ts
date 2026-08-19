@@ -14,9 +14,11 @@ import {
   count,
   ilike,
   sql,
+  notExists,
   aliasedTable,
   type SQL,
 } from 'drizzle-orm';
+import { blockedUsers } from '../../db/schema/blockedUsers';
 
 const senderUser = aliasedTable(users, 'sender_user');
 
@@ -52,6 +54,17 @@ export async function isConversationMember(conversationId: string, userId: strin
 
 export async function searchUsers(currentUserId: string, q: string, limit = 50) {
   const pattern = `%${escapeLike(q)}%`;
+  const noBlockRelation = notExists(
+    db
+      .select({ id: blockedUsers.id })
+      .from(blockedUsers)
+      .where(
+        or(
+          and(eq(blockedUsers.blockerId, currentUserId), eq(blockedUsers.blockedId, users.id)),
+          and(eq(blockedUsers.blockerId, users.id), eq(blockedUsers.blockedId, currentUserId)),
+        ),
+      ),
+  );
   const rows = await db
     .select({
       id: users.id,
@@ -68,6 +81,7 @@ export async function searchUsers(currentUserId: string, q: string, limit = 50) 
         ne(users.id, currentUserId),
         eq(users.isVerified, true),
         or(ilike(users.username, pattern), ilike(users.fullName, pattern))!,
+        noBlockRelation,
       ),
     )
     .orderBy(desc(users.isOnline), users.username)
