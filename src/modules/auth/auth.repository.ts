@@ -46,13 +46,13 @@ export async function saveRefreshToken(data: { userId: string; token: string; ex
   return refreshToken;
 }
 
-export async function findRefreshToken(token: string) {
+export async function consumeRefreshToken(token: string) {
   const now = new Date();
-  const [refreshToken] = await db
-    .select()
-    .from(refreshTokens)
-    .where(and(eq(refreshTokens.token, token), gt(refreshTokens.expiredAt, now)));
-  return refreshToken || null;
+  const [deleted] = await db
+    .delete(refreshTokens)
+    .where(and(eq(refreshTokens.token, token), gt(refreshTokens.expiredAt, now)))
+    .returning({ userId: refreshTokens.userId });
+  return deleted?.userId ?? null;
 }
 
 export async function deleteRefreshToken(token: string) {
