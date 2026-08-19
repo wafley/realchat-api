@@ -1,4 +1,5 @@
 import * as repository from './users.repository';
+import * as blockedRepository from './blockedUsers.repository';
 import { findUserById, findUserByUsername } from '../auth/auth.repository';
 import { comparePassword, hashPassword } from '../../utils/hashPassword';
 import { NotFoundError, ConflictError, BadRequestError } from '../../utils/errors';
@@ -157,4 +158,29 @@ export async function changePassword(userId: string, oldPassword: string, newPas
 
   const passwordHash = await hashPassword(newPassword);
   await repository.changePasswordAtomically(userId, passwordHash);
+}
+
+export async function blockUser(userId: string, targetId: string) {
+  if (userId === targetId) throw new BadRequestError('Cannot block yourself');
+
+  const target = await findUserById(targetId);
+  if (!target) throw new NotFoundError('User not found');
+
+  const existing = await blockedRepository.findBlock(userId, targetId);
+  if (existing) throw new ConflictError('User is already blocked');
+
+  await blockedRepository.insertBlock(userId, targetId);
+}
+
+export async function unblockUser(userId: string, targetId: string) {
+  if (userId === targetId) throw new BadRequestError('Cannot unblock yourself');
+
+  const existing = await blockedRepository.findBlock(userId, targetId);
+  if (!existing) throw new NotFoundError('User is not blocked');
+
+  await blockedRepository.deleteBlock(userId, targetId);
+}
+
+export async function getBlockedUsers(userId: string) {
+  return blockedRepository.listBlocked(userId);
 }

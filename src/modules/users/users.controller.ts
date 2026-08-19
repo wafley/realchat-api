@@ -50,3 +50,32 @@ export async function changePassword(req: AuthRequest, res: Response, next: Next
     next(error);
   }
 }
+
+export async function blockUser(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const { id } = userIdSchema.parse(req.params);
+    await userService.blockUser(req.userId!, id);
+    res.status(201).json({ success: true, message: 'User blocked' });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function unblockUser(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const { id } = userIdSchema.parse(req.params);
+    await userService.unblockUser(req.userId!, id);
+    res.status(200).json({ success: true, message: 'User unblocked' });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getBlockedUsers(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const result = await userService.getBlockedUsers(req.userId!);
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+}

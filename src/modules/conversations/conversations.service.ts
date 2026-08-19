@@ -9,6 +9,7 @@ import { onlineUsers } from '../../socket/onlineUsers';
 import { sendIncomingPush } from '../devices/devices.service';
 import { messageRateLimiter } from '../../socket/handlers/message.handler';
 import { unlinkQuietly } from '../../utils/cleanup';
+import { isBlockedByUser, isBlockedByAnyMember } from '../users/blockedUsers.repository';
 
 export async function createConversation(userId: string, data: { participantId: string }) {
   if (!data.participantId) throw new BadRequestError('participantId is required for private chat');
@@ -19,6 +20,10 @@ export async function createConversation(userId: string, data: { participantId: 
   if (!participant) throw new NotFoundError('Participant not found');
   if (!participant.isVerified)
     throw new BadRequestError('Cannot start a conversation with an unverified user');
+
+  if (await isBlockedByUser(data.participantId, userId)) {
+    throw new ForbiddenError('You are blocked by this user');
+  }
 
   return repository.createPrivateConversationIfMissing(userId, data.participantId);
 }
@@ -36,6 +41,10 @@ export async function sendAttachmentMessage(
 
     const membership = await repository.findConversationMembership(conversationId, userId);
     if (!membership) throw new ForbiddenError('You are not a member of this conversation');
+
+    if (await isBlockedByAnyMember(conversationId, userId)) {
+      throw new ForbiddenError('You are blocked by a member of this conversation');
+    }
 
     if (data.replyToId) {
       const replyMessage = await repository.findMessageById(data.replyToId);
