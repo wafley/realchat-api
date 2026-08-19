@@ -452,6 +452,10 @@ export async function changeRoleAtomically(
 export async function leaveGroupAtomically(conversationId: string, userId: string) {
   return db.transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${'group:' + conversationId}))`);
+    const [conversation] = await tx
+      .select({ createdBy: conversations.createdBy })
+      .from(conversations)
+      .where(eq(conversations.id, conversationId));
     const members = await tx
       .select({ userId: conversationMembers.userId, role: conversationMembers.role })
       .from(conversationMembers)
@@ -460,7 +464,32 @@ export async function leaveGroupAtomically(conversationId: string, userId: strin
     if (!current) throw new NotFoundError('You are not a member of this group');
 
     let promotedUserId: string | null = null;
-    if (current.role === 'ADMIN' && members.filter((m) => m.role === 'ADMIN').length === 1) {
+    let transferredToId: string | null = null;
+
+    const admins = members.filter((m) => m.role === 'ADMIN');
+    if (conversation?.createdBy === userId) {
+      const successor =
+        admins.find((m) => m.userId !== userId) ?? members.find((m) => m.role === 'MEMBER');
+      if (successor) {
+        transferredToId = successor.userId;
+        if (successor.role === 'MEMBER') {
+          promotedUserId = successor.userId;
+          await tx
+            .update(conversationMembers)
+            .set({ role: 'ADMIN' })
+            .where(
+              and(
+                eq(conversationMembers.conversationId, conversationId),
+                eq(conversationMembers.userId, successor.userId),
+              ),
+            );
+        }
+        await tx
+          .update(conversations)
+          .set({ createdBy: successor.userId })
+          .where(eq(conversations.id, conversationId));
+      }
+    } else if (current.role === 'ADMIN' && admins.length === 1) {
       const nonAdmin = members.filter((m) => m.role === 'MEMBER');
       if (nonAdmin.length > 0) {
         promotedUserId = nonAdmin[0].userId;
@@ -485,7 +514,7 @@ export async function leaveGroupAtomically(conversationId: string, userId: strin
         ),
       );
 
-    return { promotedUserId };
+    return { promotedUserId, transferredToId };
   });
 }
 
