@@ -100,6 +100,14 @@ export async function validateMessageUpload(req: Request, _res: Response, next: 
 
     const isGif = req.file.mimetype === 'image/gif' && buffer.toString('ascii', 0, 4) === 'GIF8';
     if (isGif) {
+      const oldPath = req.file.path;
+      const newFilename = `${path.basename(req.file.filename, path.extname(req.file.filename))}.gif`;
+      const newPath = path.join(env.uploadDir, newFilename);
+      await fs.rename(oldPath, newPath);
+
+      req.file.filename = newFilename;
+      req.file.path = newPath;
+      req.file.mimetype = 'image/gif';
       next();
       return;
     }
