@@ -8,6 +8,12 @@ const safeText = (max: number) =>
     .max(max)
     .regex(/^[^\p{Cc}<>"'&]+$/u, 'Contains disallowed characters');
 
+const email = z
+  .string()
+  .trim()
+  .email()
+  .transform((v) => v.toLowerCase());
+
 export const registerSchema = z
   .object({
     username: z
@@ -16,7 +22,7 @@ export const registerSchema = z
       .min(3)
       .max(30)
       .regex(/^[A-Za-z0-9_]+$/, 'Username can only contain letters, numbers, and underscores'),
-    email: z.string().trim().email(),
+    email,
     password: z.string().min(6).max(128),
     fullName: safeText(100).optional(),
   })
@@ -24,7 +30,7 @@ export const registerSchema = z
 
 export const loginSchema = z
   .object({
-    email: z.string().trim().email(),
+    email,
     password: z.string().min(1),
   })
   .strict();
@@ -37,7 +43,7 @@ export const refreshSchema = z
 
 export const forgotPasswordSchema = z
   .object({
-    email: z.string().trim().email(),
+    email,
   })
   .strict();
 
