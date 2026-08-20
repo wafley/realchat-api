@@ -16,6 +16,7 @@ export const conversationMembers = pgTable(
     joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
     mutedUntil: timestamp('muted_until', { withTimezone: true }),
     clearedAt: timestamp('cleared_at', { withTimezone: true }),
+    hiddenAt: timestamp('hidden_at', { withTimezone: true }),
   },
   (table) => ({
     unq: unique().on(table.conversationId, table.userId),

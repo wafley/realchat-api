@@ -18,6 +18,7 @@ import {
   or,
   count,
   ilike,
+  isNull,
   sql,
   inArray,
   aliasedTable,
@@ -132,6 +133,7 @@ export async function findConversationList(
       role: conversationMembers.role,
       mutedUntil: conversationMembers.mutedUntil,
       clearedAt: conversationMembers.clearedAt,
+      hiddenAt: conversationMembers.hiddenAt,
     })
     .from(conversationMembers)
     .where(eq(conversationMembers.userId, userId))
@@ -209,7 +211,7 @@ export async function findConversationList(
 
   const sortKey = sql`COALESCE(${lastMessage.createdAt}, ${conversations.createdAt})`;
 
-  const conditions: (SQL | undefined)[] = [];
+  const conditions: (SQL | undefined)[] = [isNull(mine.hiddenAt)];
   if (search) {
     const escaped = search.replace(/[\\%_]/g, '\\$&');
     const pattern = `%${escaped}%`;
@@ -342,6 +344,43 @@ export async function removeMember(conversationId: string, userId: string) {
       and(
         eq(conversationMembers.conversationId, conversationId),
         eq(conversationMembers.userId, userId),
+      ),
+    );
+}
+
+export async function hideConversationForSelf(conversationId: string, userId: string) {
+  await db
+    .update(conversationMembers)
+    .set({ hiddenAt: new Date() })
+    .where(
+      and(
+        eq(conversationMembers.conversationId, conversationId),
+        eq(conversationMembers.userId, userId),
+      ),
+    );
+}
+
+export async function unhideConversationForSelf(conversationId: string, userId: string) {
+  await db
+    .update(conversationMembers)
+    .set({ hiddenAt: null })
+    .where(
+      and(
+        eq(conversationMembers.conversationId, conversationId),
+        eq(conversationMembers.userId, userId),
+      ),
+    );
+}
+
+export async function unhideConversationMembers(conversationId: string, userIds: string[]) {
+  if (userIds.length === 0) return;
+  await db
+    .update(conversationMembers)
+    .set({ hiddenAt: null })
+    .where(
+      and(
+        eq(conversationMembers.conversationId, conversationId),
+        inArray(conversationMembers.userId, userIds),
       ),
     );
 }
@@ -670,6 +709,14 @@ export async function setMutedUntil(
     )
     .returning({ mutedUntil: conversationMembers.mutedUntil });
   return row || null;
+}
+
+export async function findConversationAttachmentPaths(conversationId: string) {
+  const rows = await db
+    .select({ fileUrl: messages.fileUrl })
+    .from(messages)
+    .where(and(eq(messages.conversationId, conversationId), sql`${messages.fileUrl} IS NOT NULL`));
+  return rows.map((r) => r.fileUrl as string);
 }
 
 export async function deleteConversation(conversationId: string) {

@@ -119,12 +119,17 @@ export function initializeSocket(server: HttpServer) {
         socket.join(`user:${userId}`);
 
         const memberships = await db
-          .select({ conversationId: conversationMembers.conversationId })
+          .select({
+            conversationId: conversationMembers.conversationId,
+            hiddenAt: conversationMembers.hiddenAt,
+          })
           .from(conversationMembers)
           .where(eq(conversationMembers.userId, userId));
         userConversations = memberships.map((membership) => membership.conversationId);
         for (const membership of memberships) {
-          socket.join(`conversation:${membership.conversationId}`);
+          if (!membership.hiddenAt) {
+            socket.join(`conversation:${membership.conversationId}`);
+          }
         }
 
         // Emit presence only after this socket has joined its conversation

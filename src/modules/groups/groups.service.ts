@@ -10,6 +10,7 @@ import {
   leaveGroupAtomically,
   insertMessage,
   deleteConversation,
+  findConversationAttachmentPaths,
 } from '../conversations/conversations.repository';
 import { NotFoundError, BadRequestError, ForbiddenError } from '../../utils/errors';
 import { getIO } from '../../socket/index';
@@ -23,6 +24,25 @@ import path from 'path';
 
 function displayName(user: { fullName?: string | null; username?: string } | null | undefined) {
   return user?.fullName || user?.username || 'Unknown';
+}
+
+async function cleanupConversationFiles(
+  conversationId: string,
+  avatarUrl: string | null | undefined,
+) {
+  const filePaths = await findConversationAttachmentPaths(conversationId);
+  for (const url of filePaths) {
+    const filename = url.split('/').pop();
+    if (filename) {
+      await unlinkQuietly(path.join(env.uploadDir, filename));
+    }
+  }
+  if (avatarUrl) {
+    const filename = avatarUrl.split('/').pop();
+    if (filename) {
+      await unlinkQuietly(path.join(env.uploadDir, filename));
+    }
+  }
 }
 
 async function emitSystemMessage(
@@ -226,6 +246,10 @@ export async function removeMember(userId: string, groupId: string, targetUserId
   if (conversation.createdBy === targetUserId)
     throw new ForbiddenError('Cannot remove the group creator');
 
+  const targetMember = members.find((m) => m.userId === targetUserId);
+  if (targetMember?.role === 'ADMIN' && conversation.createdBy !== userId)
+    throw new ForbiddenError('Only the group creator can remove an admin');
+
   await removeMemberAtomically(groupId, targetUserId);
 
   const io = getIO();
@@ -266,6 +290,10 @@ export async function changeRole(
   if (targetUserId === userId) throw new BadRequestError('You cannot change your own role');
   if (conversation.createdBy === targetUserId)
     throw new ForbiddenError('Cannot change the group creator role');
+
+  const targetMember = members.find((m) => m.userId === targetUserId);
+  if (targetMember?.role === 'ADMIN' && role === 'MEMBER' && conversation.createdBy !== userId)
+    throw new ForbiddenError('Only the group creator can demote an admin');
 
   await changeRoleAtomically(groupId, targetUserId, role);
 
@@ -346,17 +374,12 @@ export async function leaveGroup(userId: string, groupId: string) {
   const io = getIO();
 
   if (membersAfter.length === 0) {
+    await cleanupConversationFiles(groupId, conversation.avatarUrl);
     await deleteConversation(groupId);
     io.to(`user:${userId}`).emit('group:dismissed', { conversationId: groupId });
     const room = `conversation:${groupId}`;
     io.in(room).socketsLeave(room);
 
-    if (conversation.avatarUrl) {
-      const filename = conversation.avatarUrl.split('/').pop();
-      if (filename) {
-        await unlinkQuietly(path.join(env.uploadDir, filename));
-      }
-    }
     return;
   }
 
@@ -385,6 +408,7 @@ export async function dismissGroup(userId: string, groupId: string) {
   if (conversation.createdBy !== userId)
     throw new ForbiddenError('Only the group creator can dismiss the group');
 
+  await cleanupConversationFiles(groupId, conversation.avatarUrl);
   await deleteConversation(groupId);
 
   const io = getIO();
@@ -393,11 +417,4 @@ export async function dismissGroup(userId: string, groupId: string) {
   });
   const room = `conversation:${groupId}`;
   io.in(room).socketsLeave(room);
-
-  if (conversation.avatarUrl) {
-    const filename = conversation.avatarUrl.split('/').pop();
-    if (filename) {
-      await unlinkQuietly(path.join(env.uploadDir, filename));
-    }
-  }
 }

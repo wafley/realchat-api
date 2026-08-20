@@ -9,6 +9,8 @@ import { onlineUsers } from '../../socket/onlineUsers';
 import { sendIncomingPush } from '../devices/devices.service';
 import { messageRateLimiter } from '../../socket/handlers/message.handler';
 import { unlinkQuietly } from '../../utils/cleanup';
+import { env } from '../../config/env';
+import path from 'path';
 import {
   isBlockedByUser,
   isBlockedByAnyMember,
@@ -111,6 +113,11 @@ export async function sendAttachmentMessage(
       },
       recipientRows.map(({ userId: recipientId, status }) => ({ userId: recipientId, status })),
     );
+
+    await repository.unhideConversationMembers(conversationId, [
+      userId,
+      ...recipientRows.map((row) => row.userId),
+    ]);
 
     for (const row of recipientRows) {
       if (row.status === 'DELIVERED') {
@@ -253,6 +260,8 @@ export async function getConversationDetail(userId: string, conversationId: stri
   const member = await repository.isMember(conversationId, userId);
   if (!member) throw new ForbiddenError('You are not a member of this conversation');
 
+  await repository.unhideConversationForSelf(conversationId, userId);
+
   const members = await repository.findMembersByConversationId(conversationId);
   const me = members.find((m) => m.userId === userId);
   const blockedIds = await getBlockRelationUserIds(userId);
@@ -294,7 +303,7 @@ export async function leaveConversation(userId: string, conversationId: string) 
     return groupService.leaveGroup(userId, conversationId);
   }
 
-  await repository.removeMember(conversationId, userId);
+  await repository.hideConversationForSelf(conversationId, userId);
   await forceLeaveConversationRoom(userId, conversationId);
 }
 
@@ -410,6 +419,13 @@ export async function deleteMessage(userId: string, conversationId: string, mess
   if (!member) throw new ForbiddenError('You are not a member of this conversation');
 
   await repository.softDeleteMessage(messageId);
+
+  if (message.fileUrl) {
+    const filename = message.fileUrl.split('/').pop();
+    if (filename) {
+      await unlinkQuietly(path.join(env.uploadDir, filename));
+    }
+  }
 
   getIO()
     .to(`conversation:${conversationId}`)
