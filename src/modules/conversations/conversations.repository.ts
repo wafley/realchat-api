@@ -857,7 +857,7 @@ export async function insertAttachmentMessageAtomically(
     mimeType: string;
     duration: number | null;
   },
-  recipientStatuses: { userId: string; status: 'DELIVERED' | 'SENT' }[],
+  recipientStatuses: { userId: string; status: 'DELIVERED' | 'SENT' | 'SEEN'; seenAt?: Date }[],
 ) {
   return db.transaction(async (tx) => {
     const [message] = await tx
@@ -899,7 +899,7 @@ export async function forwardMessageAtomically(
     mimeType: string | null;
     duration: number | null;
   },
-  recipientStatuses: { userId: string; status: 'DELIVERED' | 'SENT' }[],
+  recipientStatuses: { userId: string; status: 'DELIVERED' | 'SENT' | 'SEEN'; seenAt?: Date }[],
 ) {
   return db.transaction(async (tx) => {
     const [message] = await tx

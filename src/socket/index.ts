@@ -11,6 +11,8 @@ import * as blockedRepository from '../modules/users/blockedUsers.repository';
 import { setupMessageHandlers, catchUpMessageDelivery } from './handlers/message.handler';
 import { setupTypingHandlers } from './handlers/typing.handler';
 import { setupGroupHandlers } from './handlers/group.handler';
+import { setupActivityHandlers } from './handlers/activity.handler';
+import { clearSocketActiveViewers } from './activeViewers';
 
 let io: Server;
 
@@ -103,6 +105,7 @@ export function initializeSocket(server: HttpServer) {
     setupMessageHandlers(io, socket);
     setupTypingHandlers(io, socket);
     setupGroupHandlers(socket);
+    setupActivityHandlers(io, socket);
 
     // Track this socket before any async work so fast disconnects are caught
     // by the single disconnect listener below.
@@ -158,6 +161,7 @@ export function initializeSocket(server: HttpServer) {
 
     socket.on('disconnect', () => {
       console.log(`User ${userId} disconnected (socket: ${socket.id})`);
+      clearSocketActiveViewers(socket.id);
       const sockets = onlineUsers.get(userId);
       if (!sockets) {
         return;

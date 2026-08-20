@@ -5,7 +5,7 @@ import { NotFoundError, BadRequestError, ForbiddenError, AppError } from '../../
 import { toSender } from '../../utils/sender';
 import { getIO } from '../../socket/index';
 import { forceLeaveConversationRoom } from '../../socket/room';
-import { onlineUsers } from '../../socket/onlineUsers';
+import { computeRecipientStatus } from '../../socket/activeViewers';
 import { sendIncomingPush } from '../devices/devices.service';
 import { messageRateLimiter } from '../../socket/handlers/message.handler';
 import { unlinkQuietly } from '../../utils/cleanup';
@@ -90,13 +90,18 @@ export async function sendAttachmentMessage(
     const duration = type === 'VIDEO' ? (data.duration ?? null) : null;
 
     const members = await repository.findConversationMemberIds(conversationId);
+    const now = new Date();
     const recipientRows = members
       .filter((member) => member.userId !== userId)
-      .map((member) => ({
-        userId: member.userId,
-        mutedUntil: member.mutedUntil,
-        status: onlineUsers.get(member.userId)?.size ? ('DELIVERED' as const) : ('SENT' as const),
-      }));
+      .map((member) => {
+        const status = computeRecipientStatus(conversationId, member.userId);
+        return {
+          userId: member.userId,
+          mutedUntil: member.mutedUntil,
+          status,
+          ...(status === 'SEEN' ? { seenAt: now } : {}),
+        };
+      });
 
     const message = await repository.insertAttachmentMessageAtomically(
       conversationId,
@@ -111,7 +116,11 @@ export async function sendAttachmentMessage(
         mimeType: file.mimetype,
         duration,
       },
-      recipientRows.map(({ userId: recipientId, status }) => ({ userId: recipientId, status })),
+      recipientRows.map(({ userId: recipientId, status, seenAt }) => ({
+        userId: recipientId,
+        status,
+        seenAt,
+      })),
     );
 
     await repository.unhideConversationMembers(conversationId, [
@@ -120,13 +129,15 @@ export async function sendAttachmentMessage(
     ]);
 
     for (const row of recipientRows) {
-      if (row.status === 'DELIVERED') {
-        getIO().to(`user:${userId}`).emit('message:status', {
-          messageId: message.id,
-          status: 'DELIVERED',
-          userId: row.userId,
-          seenAt: null,
-        });
+      if (row.status === 'DELIVERED' || row.status === 'SEEN') {
+        getIO()
+          .to(`user:${userId}`)
+          .emit('message:status', {
+            messageId: message.id,
+            status: row.status,
+            userId: row.userId,
+            seenAt: row.status === 'SEEN' ? now.toISOString() : null,
+          });
       }
     }
 
@@ -520,12 +531,17 @@ export async function forwardMessage(
   }
 
   const memberRows = await repository.findConversationMemberIds(targetConversationId);
+  const now = new Date();
   const recipientRows = memberRows
     .filter((member) => member.userId !== userId)
-    .map((member) => ({
-      userId: member.userId,
-      status: onlineUsers.get(member.userId)?.size ? ('DELIVERED' as const) : ('SENT' as const),
-    }));
+    .map((member) => {
+      const status = computeRecipientStatus(targetConversationId, member.userId);
+      return {
+        userId: member.userId,
+        status,
+        ...(status === 'SEEN' ? { seenAt: now } : {}),
+      };
+    });
 
   const created = await repository.forwardMessageAtomically(
     targetConversationId,
@@ -543,13 +559,15 @@ export async function forwardMessage(
   );
 
   for (const row of recipientRows) {
-    if (row.status === 'DELIVERED') {
-      getIO().to(`user:${userId}`).emit('message:status', {
-        messageId: created.id,
-        status: 'DELIVERED',
-        userId: row.userId,
-        seenAt: null,
-      });
+    if (row.status === 'DELIVERED' || row.status === 'SEEN') {
+      getIO()
+        .to(`user:${userId}`)
+        .emit('message:status', {
+          messageId: created.id,
+          status: row.status,
+          userId: row.userId,
+          seenAt: row.status === 'SEEN' ? now.toISOString() : null,
+        });
     }
   }
 
