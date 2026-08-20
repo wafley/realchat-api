@@ -5,6 +5,7 @@ uploads/**
 !uploads/**/
 !uploads/**/.gitkeep
 *.log
+server_pg.*
 **/firebase-service-account*.json
 
 # Docs
