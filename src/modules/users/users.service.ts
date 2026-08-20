@@ -9,6 +9,9 @@ import { conversationMembers } from '../../db/schema/conversationMembers';
 import { conversations } from '../../db/schema/conversations';
 import { eq, and, or, ne, inArray } from 'drizzle-orm';
 import { getIO } from '../../socket/index';
+import { unlinkQuietly } from '../../utils/cleanup';
+import { env } from '../../config/env';
+import path from 'path';
 
 async function emitProfileUpdate(
   userId: string,
@@ -148,6 +151,14 @@ export async function updateAvatar(userId: string, file: Express.Multer.File) {
 
   const avatarUrl = `/uploads/${file.filename}`;
   const updated = await repository.updateAvatar(userId, avatarUrl);
+
+  if (user.avatarUrl) {
+    const filename = user.avatarUrl.split('/').pop();
+    if (filename) {
+      await unlinkQuietly(path.join(env.uploadDir, filename));
+    }
+  }
+
   await emitProfileUpdate(userId, updated);
   return updated;
 }

@@ -29,6 +29,8 @@ import { createAndEmitMany } from '../../modules/notifications/notifications.ser
 import { toSender } from '../../utils/sender';
 import { sendIncomingPush } from '../../modules/devices/devices.service';
 import { env } from '../../config/env';
+import { unlinkQuietly } from '../../utils/cleanup';
+import path from 'path';
 import { createMessageRateLimiter, createFixedWindowLimiter } from '../rateLimit';
 import { onlineUsers } from '../onlineUsers';
 
@@ -460,6 +462,13 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
           .update(messages)
           .set({ isDeleted: true, content: '' })
           .where(eq(messages.id, data.messageId));
+
+        if (message.fileUrl) {
+          const filename = message.fileUrl.split('/').pop();
+          if (filename) {
+            await unlinkQuietly(path.join(env.uploadDir, filename));
+          }
+        }
 
         io.to(`conversation:${data.conversationId}`).emit('message:deleted', {
           messageId: data.messageId,

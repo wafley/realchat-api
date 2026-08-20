@@ -9,6 +9,8 @@ import { onlineUsers } from '../../socket/onlineUsers';
 import { sendIncomingPush } from '../devices/devices.service';
 import { messageRateLimiter } from '../../socket/handlers/message.handler';
 import { unlinkQuietly } from '../../utils/cleanup';
+import { env } from '../../config/env';
+import path from 'path';
 import {
   isBlockedByUser,
   isBlockedByAnyMember,
@@ -417,6 +419,13 @@ export async function deleteMessage(userId: string, conversationId: string, mess
   if (!member) throw new ForbiddenError('You are not a member of this conversation');
 
   await repository.softDeleteMessage(messageId);
+
+  if (message.fileUrl) {
+    const filename = message.fileUrl.split('/').pop();
+    if (filename) {
+      await unlinkQuietly(path.join(env.uploadDir, filename));
+    }
+  }
 
   getIO()
     .to(`conversation:${conversationId}`)

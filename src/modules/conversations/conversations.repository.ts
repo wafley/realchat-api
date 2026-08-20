@@ -711,6 +711,14 @@ export async function setMutedUntil(
   return row || null;
 }
 
+export async function findConversationAttachmentPaths(conversationId: string) {
+  const rows = await db
+    .select({ fileUrl: messages.fileUrl })
+    .from(messages)
+    .where(and(eq(messages.conversationId, conversationId), sql`${messages.fileUrl} IS NOT NULL`));
+  return rows.map((r) => r.fileUrl as string);
+}
+
 export async function deleteConversation(conversationId: string) {
   await db.transaction(async (tx) => {
     const messageIds = await tx
