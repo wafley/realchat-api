@@ -1,8 +1,12 @@
 import { Server, Socket } from 'socket.io';
 import { z } from 'zod';
+import { eq, and, ne } from 'drizzle-orm';
 import { env } from '../../config/env';
+import db from '../../db/index';
 import { createFixedWindowLimiter } from '../rateLimit';
 import { findConversationMembership } from '../../modules/conversations/conversations.repository';
+import { conversationMembers } from '../../db/schema/conversationMembers';
+import { getBlockRelationUserIds } from '../../modules/users/blockedUsers.repository';
 
 const typingPayloadSchema = z.object({
   conversationId: z.string().uuid(),
@@ -32,6 +36,32 @@ async function isConversationMember(conversationId: string, userId: string) {
   }
 }
 
+async function broadcastTyping(
+  io: Server,
+  userId: string,
+  conversationId: string,
+  event: 'typing:start' | 'typing:stop',
+) {
+  try {
+    const members = await db
+      .select({ userId: conversationMembers.userId })
+      .from(conversationMembers)
+      .where(
+        and(
+          eq(conversationMembers.conversationId, conversationId),
+          ne(conversationMembers.userId, userId),
+        ),
+      );
+    const blockedIds = await getBlockRelationUserIds(userId);
+    for (const member of members) {
+      if (blockedIds.has(member.userId)) continue;
+      io.to(`user:${member.userId}`).emit(event, { conversationId, userId });
+    }
+  } catch (err) {
+    console.error(`Failed to broadcast ${event} for user ${userId}:`, err);
+  }
+}
+
 export function setupTypingHandlers(io: Server, socket: Socket) {
   const userId = (socket as Socket & { userId: string }).userId;
 
@@ -42,10 +72,7 @@ export function setupTypingHandlers(io: Server, socket: Socket) {
 
     if (!(await isConversationMember(data.conversationId, userId))) return;
 
-    socket.to(`conversation:${data.conversationId}`).emit('typing:start', {
-      conversationId: data.conversationId,
-      userId,
-    });
+    void broadcastTyping(io, userId, data.conversationId, 'typing:start');
   });
 
   socket.on('typing:stop', async (data: { conversationId: string }) => {
@@ -55,9 +82,6 @@ export function setupTypingHandlers(io: Server, socket: Socket) {
 
     if (!(await isConversationMember(data.conversationId, userId))) return;
 
-    socket.to(`conversation:${data.conversationId}`).emit('typing:stop', {
-      conversationId: data.conversationId,
-      userId,
-    });
+    void broadcastTyping(io, userId, data.conversationId, 'typing:stop');
   });
 }
