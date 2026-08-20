@@ -14,6 +14,7 @@ import {
   count,
   ilike,
   sql,
+  isNull,
   notExists,
   aliasedTable,
   type SQL,
@@ -149,6 +150,7 @@ export async function searchMessages(
     conditions.push(
       eq(conversationMembers.conversationId, messages.conversationId),
       eq(conversationMembers.userId, userId),
+      isNull(conversationMembers.hiddenAt),
     );
   }
   if (before) conditions.push(lt(messages.createdAt, before));
@@ -189,6 +191,7 @@ export async function searchDmMessages(userId: string, q: string, cursor?: strin
     eq(conversations.type, 'PRIVATE'),
     eq(mine.conversationId, messages.conversationId),
     eq(mine.userId, userId),
+    isNull(mine.hiddenAt),
     eq(peerMember.conversationId, messages.conversationId),
     ne(peerMember.userId, userId),
     eq(peer.id, peerMember.userId),

@@ -719,6 +719,18 @@ export async function findConversationAttachmentPaths(conversationId: string) {
   return rows.map((r) => r.fileUrl as string);
 }
 
+export async function countMessageFileReferences(fileUrl: string, excludeConversationId?: string) {
+  const conditions: SQL[] = [eq(messages.fileUrl, fileUrl), eq(messages.isDeleted, false)];
+  if (excludeConversationId) {
+    conditions.push(ne(messages.conversationId, excludeConversationId));
+  }
+  const [row] = await db
+    .select({ value: count() })
+    .from(messages)
+    .where(and(...conditions));
+  return Number(row?.value ?? 0);
+}
+
 export async function deleteConversation(conversationId: string) {
   await db.transaction(async (tx) => {
     const messageIds = await tx

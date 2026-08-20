@@ -19,6 +19,7 @@ import {
   findReactionsByMessage,
   addStar,
   removeStar,
+  countMessageFileReferences,
 } from '../../modules/conversations/conversations.repository';
 import { findUserById, findUserIdsByUsernames } from '../../modules/auth/auth.repository';
 import {
@@ -463,7 +464,7 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
           .set({ isDeleted: true, content: '' })
           .where(eq(messages.id, data.messageId));
 
-        if (message.fileUrl) {
+        if (message.fileUrl && (await countMessageFileReferences(message.fileUrl)) === 0) {
           const filename = message.fileUrl.split('/').pop();
           if (filename) {
             await unlinkQuietly(path.join(env.uploadDir, filename));
