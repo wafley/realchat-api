@@ -68,12 +68,27 @@ export function initializeSocket(server: HttpServer) {
       const decoded = jwt.verify(token, env.jwtAccessSecret) as {
         userId: string;
         type?: string;
+        tv?: number;
       };
       if (decoded.type !== 'access') {
         return next(new Error('Invalid or expired token'));
       }
-      (socket as Socket & { userId: string }).userId = decoded.userId;
-      next();
+      void (async () => {
+        try {
+          const [user] = await db
+            .select({ tokenVersion: users.tokenVersion })
+            .from(users)
+            .where(eq(users.id, decoded.userId))
+            .limit(1);
+          if (!user || decoded.tv !== user.tokenVersion) {
+            return next(new Error('Invalid or expired token'));
+          }
+          (socket as Socket & { userId: string }).userId = decoded.userId;
+          next();
+        } catch {
+          next(new Error('Invalid or expired token'));
+        }
+      })();
     } catch {
       next(new Error('Invalid or expired token'));
     }

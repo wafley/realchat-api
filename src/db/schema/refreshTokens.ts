@@ -7,6 +7,10 @@ export const refreshTokens = pgTable('refresh_tokens', {
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),
   token: text('token').notNull().unique(),
+  jti: text('jti').notNull().unique(),
+  familyId: uuid('family_id').notNull(),
+  parentJti: text('parent_jti'),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
   expiredAt: timestamp('expired_at', { withTimezone: true }).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });

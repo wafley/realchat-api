@@ -1,7 +1,7 @@
 import db from '../../db/index';
 import { users } from '../../db/schema/users';
 import { refreshTokens } from '../../db/schema/refreshTokens';
-import { eq, and, gt, inArray, sql } from 'drizzle-orm';
+import { eq, and, gt, inArray, isNull, sql } from 'drizzle-orm';
 
 export async function createUser(data: {
   username: string;
@@ -44,28 +44,72 @@ export async function findUserIdsByUsernames(usernames: string[]) {
     .where(inArray(users.username, usernames));
 }
 
-export async function saveRefreshToken(data: { userId: string; token: string; expiredAt: Date }) {
+export async function saveRefreshToken(data: {
+  userId: string;
+  token: string;
+  jti: string;
+  familyId: string;
+  parentJti?: string | null;
+  expiredAt: Date;
+}) {
   const [refreshToken] = await db.insert(refreshTokens).values(data).returning();
   return refreshToken;
 }
 
-export async function consumeRefreshToken(token: string) {
-  const now = new Date();
-  const [deleted] = await db
-    .delete(refreshTokens)
-    .where(and(eq(refreshTokens.token, token), gt(refreshTokens.expiredAt, now)))
-    .returning({ userId: refreshTokens.userId });
-  return deleted?.userId ?? null;
+export async function findRefreshTokenByJti(jti: string) {
+  const [row] = await db.select().from(refreshTokens).where(eq(refreshTokens.jti, jti)).limit(1);
+  return row || null;
 }
 
-export async function deleteRefreshToken(token: string) {
-  await db.delete(refreshTokens).where(eq(refreshTokens.token, token));
+export async function revokeRefreshFamily(familyId: string) {
+  await db
+    .update(refreshTokens)
+    .set({ revokedAt: new Date() })
+    .where(and(eq(refreshTokens.familyId, familyId), isNull(refreshTokens.revokedAt)));
+}
+
+export async function revokeAllUserRefreshTokens(userId: string) {
+  await db
+    .update(refreshTokens)
+    .set({ revokedAt: new Date() })
+    .where(and(eq(refreshTokens.userId, userId), isNull(refreshTokens.revokedAt)));
+}
+
+export async function rotateRefreshToken(params: {
+  oldJti: string;
+  familyId: string;
+  userId: string;
+  newToken: string;
+  newJti: string;
+  parentJti: string;
+  expiredAt: Date;
+}): Promise<boolean> {
+  const now = new Date();
+  return db.transaction(async (tx) => {
+    const updated = await tx
+      .update(refreshTokens)
+      .set({ revokedAt: now })
+      .where(and(eq(refreshTokens.jti, params.oldJti), isNull(refreshTokens.revokedAt)))
+      .returning({ id: refreshTokens.id });
+    if (updated.length === 0) {
+      return false;
+    }
+    await tx.insert(refreshTokens).values({
+      userId: params.userId,
+      token: params.newToken,
+      jti: params.newJti,
+      familyId: params.familyId,
+      parentJti: params.parentJti,
+      expiredAt: params.expiredAt,
+    });
+    return true;
+  });
 }
 
 export async function updatePassword(userId: string, passwordHash: string) {
   const [user] = await db
     .update(users)
-    .set({ passwordHash, updatedAt: new Date() })
+    .set({ passwordHash, updatedAt: new Date(), tokenVersion: sql`${users.tokenVersion} + 1` })
     .where(eq(users.id, userId))
     .returning();
   return user;
@@ -135,5 +179,8 @@ export async function clearVerificationToken(userId: string) {
 }
 
 export async function deleteUserRefreshTokens(userId: string) {
-  await db.delete(refreshTokens).where(eq(refreshTokens.userId, userId));
+  await db
+    .update(refreshTokens)
+    .set({ revokedAt: new Date() })
+    .where(and(eq(refreshTokens.userId, userId), isNull(refreshTokens.revokedAt)));
 }

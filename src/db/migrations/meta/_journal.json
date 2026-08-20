@@ -120,6 +120,20 @@
       "when": 1787122137206,
       "tag": "0016_fixed_bruce_banner",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1787190593636,
+      "tag": "0017_huge_dragon_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1787190806893,
+      "tag": "0018_green_ricochet",
+      "breakpoints": true
     }
   ]
 }
