@@ -33,7 +33,7 @@ import { env } from '../../config/env';
 import { unlinkQuietly } from '../../utils/cleanup';
 import path from 'path';
 import { createMessageRateLimiter, createFixedWindowLimiter } from '../rateLimit';
-import { onlineUsers } from '../onlineUsers';
+import { computeRecipientStatus } from '../activeViewers';
 
 function extractMentions(content: string): string[] {
   const tokens = content.match(/(^|[^\w])@([A-Za-z0-9_]{3,30})(?=[\s,.;:!?"')]|$)/g);
@@ -156,6 +156,7 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
           }
         }
 
+        const now = new Date();
         const { message, members, recipientRows } = await db.transaction(async (tx) => {
           const [message] = await tx
             .insert(messages)
@@ -184,11 +185,15 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
 
           const recipientRows = members
             .filter((member) => member.userId !== userId)
-            .map((member) => ({
-              messageId: message.id,
-              userId: member.userId,
-              status: onlineUsers.get(member.userId)?.size ? 'DELIVERED' : 'SENT',
-            }));
+            .map((member) => {
+              const status = computeRecipientStatus(conversationId, member.userId);
+              return {
+                messageId: message.id,
+                userId: member.userId,
+                status,
+                ...(status === 'SEEN' ? { seenAt: now } : {}),
+              };
+            });
 
           if (recipientRows.length > 0) {
             await tx.insert(messageStatus).values(recipientRows);
@@ -211,12 +216,12 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
         });
 
         for (const row of recipientRows) {
-          if (row.status === 'DELIVERED') {
+          if (row.status === 'DELIVERED' || row.status === 'SEEN') {
             io.to(`user:${userId}`).emit('message:status', {
               messageId: message.id,
-              status: 'DELIVERED',
+              status: row.status,
               userId: row.userId,
-              seenAt: null,
+              seenAt: row.status === 'SEEN' ? now.toISOString() : null,
             });
           }
         }
