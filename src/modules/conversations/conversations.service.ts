@@ -34,7 +34,17 @@ export async function createConversation(userId: string, data: { participantId: 
     throw new ForbiddenError('You have blocked this user');
   }
 
-  return repository.createPrivateConversationIfMissing(userId, data.participantId);
+  const conversation = await repository.createPrivateConversationIfMissing(
+    userId,
+    data.participantId,
+  );
+
+  const io = getIO();
+  io.in(`user:${userId}`)
+    .in(`user:${data.participantId}`)
+    .socketsJoin(`conversation:${conversation.id}`);
+
+  return conversation;
 }
 
 export async function sendAttachmentMessage(

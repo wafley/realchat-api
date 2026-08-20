@@ -113,6 +113,7 @@ export async function createGroup(
       name: conversation.name,
     });
   });
+  io.in(allIds.map((id) => `user:${id}`)).socketsJoin(`conversation:${conversation.id}`);
 
   return conversation;
 }
@@ -212,6 +213,8 @@ export async function addMembers(userId: string, groupId: string, userIds: strin
       body: `@${actor?.username || 'Someone'} menambahkan Anda ke grup "${conversation.name || ''}"`,
     })),
   );
+
+  io.in(addedIds.map((id) => `user:${id}`)).socketsJoin(`conversation:${groupId}`);
 
   return { added: addedIds.length };
 }
