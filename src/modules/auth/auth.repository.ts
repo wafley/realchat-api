@@ -22,7 +22,10 @@ export async function findUserByEmail(email: string) {
 }
 
 export async function findUserByUsername(username: string) {
-  const [user] = await db.select().from(users).where(eq(users.username, username));
+  const [user] = await db
+    .select()
+    .from(users)
+    .where(sql`lower(${users.username}) = lower(${username})`);
   return user || null;
 }
 
@@ -38,10 +41,11 @@ export async function findUsersByIds(ids: string[]) {
 
 export async function findUserIdsByUsernames(usernames: string[]) {
   if (usernames.length === 0) return [];
+  const lowerUsernames = usernames.map((u) => u.toLowerCase());
   return db
     .select({ id: users.id, username: users.username })
     .from(users)
-    .where(inArray(users.username, usernames));
+    .where(inArray(sql`lower(${users.username})`, lowerUsernames));
 }
 
 export async function saveRefreshToken(data: {

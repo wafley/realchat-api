@@ -141,6 +141,13 @@
       "when": 1787192679628,
       "tag": "0019_illegal_dakota_north",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1787192917361,
+      "tag": "0020_sudden_colleen_wing",
+      "breakpoints": true
     }
   ]
 }
