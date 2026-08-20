@@ -14,6 +14,7 @@ import {
   and,
   desc,
   gt,
+  lte,
   ne,
   or,
   count,
@@ -925,12 +926,22 @@ export async function findConversationMemberIds(conversationId: string) {
     .where(eq(conversationMembers.conversationId, conversationId));
 }
 
-export async function findIncomingMessageIdsByConversation(conversationId: string, userId: string) {
+export async function findIncomingMessageIdsByConversation(
+  conversationId: string,
+  userId: string,
+  options?: { before?: Date },
+) {
   return (
     await db
       .select({ id: messages.id })
       .from(messages)
-      .where(and(eq(messages.conversationId, conversationId), ne(messages.senderId, userId)))
+      .where(
+        and(
+          eq(messages.conversationId, conversationId),
+          ne(messages.senderId, userId),
+          options?.before ? lte(messages.createdAt, options.before) : undefined,
+        ),
+      )
   ).map((row) => row.id);
 }
 

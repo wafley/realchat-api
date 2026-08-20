@@ -471,14 +471,22 @@ export async function setMessagePinned(
   return { isPinned };
 }
 
-export async function markConversationAsRead(userId: string, conversationId: string) {
+export async function markConversationAsRead(
+  userId: string,
+  conversationId: string,
+  options?: { before?: Date },
+) {
   const conversation = await repository.findConversationById(conversationId);
   if (!conversation) throw new NotFoundError('Conversation not found');
 
   const member = await repository.isMember(conversationId, userId);
   if (!member) throw new ForbiddenError('You are not a member of this conversation');
 
-  const targetIds = await repository.findIncomingMessageIdsByConversation(conversationId, userId);
+  const targetIds = await repository.findIncomingMessageIdsByConversation(
+    conversationId,
+    userId,
+    options,
+  );
   if (targetIds.length === 0) return { updated: 0, seenAt: null };
 
   const now = new Date();

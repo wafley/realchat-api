@@ -36,7 +36,7 @@ export function setupActivityHandlers(_io: Server, socket: Socket) {
     if (!backLimiter.allow(`${userId}:${conversationId}`)) return;
 
     try {
-      await markConversationAsRead(userId, conversationId);
+      await markConversationAsRead(userId, conversationId, { before: new Date() });
     } catch {
       return;
     }
