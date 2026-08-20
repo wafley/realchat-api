@@ -311,9 +311,10 @@ export async function getMessages(
   if (!member) throw new ForbiddenError('You are not a member of this conversation');
 
   const membership = await repository.findMembershipByUser(conversationId, userId);
+  const decodedCursor = cursor ? decodeCompositeCursor(cursor) : undefined;
   const rawMessages = await repository.findMessagesByConversationId(
     conversationId,
-    cursor,
+    decodedCursor,
     limit,
     membership?.clearedAt,
     userId,
@@ -346,7 +347,12 @@ export async function getMessages(
 
   return {
     messages,
-    nextCursor: hasMore ? messagesList[messagesList.length - 1].createdAt.toISOString() : null,
+    nextCursor: hasMore
+      ? encodeCompositeCursor(
+          messagesList[messagesList.length - 1].createdAt,
+          messagesList[messagesList.length - 1].id,
+        )
+      : null,
   };
 }
 
@@ -616,7 +622,8 @@ export async function setMessageStar(
 }
 
 export async function getStarredMessages(userId: string, cursor?: string, limit = 50) {
-  const rows = await repository.findStarredMessages(userId, cursor, limit);
+  const decodedCursor = cursor ? decodeCompositeCursor(cursor) : undefined;
+  const rows = await repository.findStarredMessages(userId, decodedCursor, limit);
   const hasMore = rows.length > limit;
   const page = hasMore ? rows.slice(0, limit) : rows;
 
@@ -650,7 +657,9 @@ export async function getStarredMessages(userId: string, cursor?: string, limit 
 
   return {
     messages,
-    nextCursor: hasMore ? page[page.length - 1].starredAt.toISOString() : null,
+    nextCursor: hasMore
+      ? encodeCompositeCursor(page[page.length - 1].starredAt, page[page.length - 1].id)
+      : null,
   };
 }
 

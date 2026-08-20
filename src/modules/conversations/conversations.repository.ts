@@ -13,7 +13,6 @@ import {
   eq,
   and,
   desc,
-  lt,
   gt,
   ne,
   or,
@@ -556,14 +555,17 @@ export const memberUserColumns = {
 
 export async function findMessagesByConversationId(
   conversationId: string,
-  cursor?: string,
+  cursor?: { sortKey: string; id: string },
   limit = 50,
   clearedAt?: Date | null,
   userId?: string,
 ) {
   const conditions = [eq(messages.conversationId, conversationId)];
   if (clearedAt) conditions.push(gt(messages.createdAt, clearedAt));
-  if (cursor) conditions.push(lt(messages.createdAt, new Date(cursor)));
+  if (cursor)
+    conditions.push(
+      sql`(${messages.createdAt}, ${messages.id}) < (${cursor.sortKey}::timestamptz, ${cursor.id}::uuid)`,
+    );
 
   const statusAgg = db
     .select({
@@ -634,7 +636,7 @@ export async function findMessagesByConversationId(
 
   return query
     .where(and(...conditions))
-    .orderBy(desc(messages.createdAt))
+    .orderBy(desc(messages.createdAt), desc(messages.id))
     .limit(limit + 1);
 }
 
@@ -935,7 +937,11 @@ export async function removeStar(messageId: string, userId: string) {
     .where(and(eq(messageStars.messageId, messageId), eq(messageStars.userId, userId)));
 }
 
-export async function findStarredMessages(userId: string, cursor?: string, limit = 50) {
+export async function findStarredMessages(
+  userId: string,
+  cursor?: { sortKey: string; id: string },
+  limit = 50,
+) {
   const stars = db
     .select({
       messageId: messageStars.messageId,
@@ -948,7 +954,10 @@ export async function findStarredMessages(userId: string, cursor?: string, limit
   const senderUser = aliasedTable(users, 'star_sender');
 
   const conditions: SQL[] = [];
-  if (cursor) conditions.push(lt(stars.starredAt, new Date(cursor)));
+  if (cursor)
+    conditions.push(
+      sql`(${stars.starredAt}, ${stars.messageId}) < (${cursor.sortKey}::timestamptz, ${cursor.id}::uuid)`,
+    );
 
   return db
     .select({
@@ -977,7 +986,7 @@ export async function findStarredMessages(userId: string, cursor?: string, limit
     .innerJoin(senderUser, eq(senderUser.id, messages.senderId))
     .innerJoin(conversations, eq(conversations.id, messages.conversationId))
     .where(and(...conditions))
-    .orderBy(desc(stars.starredAt), desc(messages.createdAt))
+    .orderBy(desc(stars.starredAt), desc(stars.messageId))
     .limit(limit + 1);
 }
 
