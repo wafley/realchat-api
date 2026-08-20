@@ -40,3 +40,22 @@ export async function markAllAsRead(req: AuthRequest, res: Response, next: NextF
     next(error);
   }
 }
+
+export async function deleteNotification(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const { id } = notificationIdParamSchema.parse(req.params);
+    await notificationService.deleteNotification(req.userId!, id);
+    res.status(200).json({ success: true, message: 'Notification deleted' });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function deleteAllNotifications(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const result = await notificationService.deleteAllNotifications(req.userId!);
+    res.status(200).json({ success: true, message: 'All notifications deleted', data: result });
+  } catch (error) {
+    next(error);
+  }
+}

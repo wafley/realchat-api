@@ -39,3 +39,16 @@ export async function markAsRead(userId: string, notificationId: string) {
 export async function markAllAsRead(userId: string) {
   await repository.markAllAsRead(userId);
 }
+
+export async function deleteNotification(userId: string, notificationId: string) {
+  const notif = await repository.findById(notificationId);
+  if (!notif) throw new NotFoundError('Notification not found');
+  if (notif.userId !== userId) throw new ForbiddenError('You cannot access this notification');
+
+  await repository.deleteById(notificationId, userId);
+}
+
+export async function deleteAllNotifications(userId: string) {
+  const deleted = await repository.deleteAll(userId);
+  return { deleted };
+}

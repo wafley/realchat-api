@@ -76,3 +76,19 @@ export async function markAllAsRead(userId: string) {
     .set({ isRead: true })
     .where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)));
 }
+
+export async function deleteById(id: string, userId: string) {
+  const [deleted] = await db
+    .delete(notifications)
+    .where(and(eq(notifications.id, id), eq(notifications.userId, userId)))
+    .returning({ id: notifications.id });
+  return deleted || null;
+}
+
+export async function deleteAll(userId: string) {
+  const deleted = await db
+    .delete(notifications)
+    .where(eq(notifications.userId, userId))
+    .returning({ id: notifications.id });
+  return deleted.length;
+}
