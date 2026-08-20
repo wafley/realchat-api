@@ -191,6 +191,19 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
             await tx.insert(messageStatus).values(recipientRows);
           }
 
+          await tx
+            .update(conversationMembers)
+            .set({ hiddenAt: null })
+            .where(
+              and(
+                eq(conversationMembers.conversationId, conversationId),
+                inArray(conversationMembers.userId, [
+                  userId,
+                  ...recipientRows.map((row) => row.userId),
+                ]),
+              ),
+            );
+
           return { message, members, recipientRows };
         });
 

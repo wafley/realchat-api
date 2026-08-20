@@ -112,6 +112,11 @@ export async function sendAttachmentMessage(
       recipientRows.map(({ userId: recipientId, status }) => ({ userId: recipientId, status })),
     );
 
+    await repository.unhideConversationMembers(conversationId, [
+      userId,
+      ...recipientRows.map((row) => row.userId),
+    ]);
+
     for (const row of recipientRows) {
       if (row.status === 'DELIVERED') {
         getIO().to(`user:${userId}`).emit('message:status', {
@@ -253,6 +258,8 @@ export async function getConversationDetail(userId: string, conversationId: stri
   const member = await repository.isMember(conversationId, userId);
   if (!member) throw new ForbiddenError('You are not a member of this conversation');
 
+  await repository.unhideConversationForSelf(conversationId, userId);
+
   const members = await repository.findMembersByConversationId(conversationId);
   const me = members.find((m) => m.userId === userId);
   const blockedIds = await getBlockRelationUserIds(userId);
@@ -294,7 +301,7 @@ export async function leaveConversation(userId: string, conversationId: string) 
     return groupService.leaveGroup(userId, conversationId);
   }
 
-  await repository.removeMember(conversationId, userId);
+  await repository.hideConversationForSelf(conversationId, userId);
   await forceLeaveConversationRoom(userId, conversationId);
 }
 
