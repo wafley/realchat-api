@@ -4,6 +4,7 @@ import { generateAccessToken, generateRefreshToken } from '../../utils/generateT
 import { sendVerificationEmail, sendResetPasswordEmail } from '../../utils/sendEmail';
 import { ConflictError, UnauthorizedError, BadRequestError } from '../../utils/errors';
 import { env } from '../../config/env';
+import { getIO } from '../../socket/index';
 import jwt from 'jsonwebtoken';
 import crypto, { randomUUID } from 'crypto';
 
@@ -183,6 +184,7 @@ export async function resetPassword(token: string, newPassword: string) {
   await repository.updatePassword(user.id, passwordHash);
   await repository.clearResetToken(user.id);
   await repository.deleteUserRefreshTokens(user.id);
+  getIO().in(`user:${user.id}`).disconnectSockets(true);
 }
 
 export async function verifyEmail(token: string) {

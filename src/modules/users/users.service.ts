@@ -172,6 +172,7 @@ export async function changePassword(userId: string, oldPassword: string, newPas
 
   const passwordHash = await hashPassword(newPassword);
   await repository.changePasswordAtomically(userId, passwordHash);
+  getIO().in(`user:${userId}`).disconnectSockets(true);
 }
 
 export async function blockUser(userId: string, targetId: string) {
