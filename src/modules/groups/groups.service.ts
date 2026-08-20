@@ -226,6 +226,10 @@ export async function removeMember(userId: string, groupId: string, targetUserId
   if (conversation.createdBy === targetUserId)
     throw new ForbiddenError('Cannot remove the group creator');
 
+  const targetMember = members.find((m) => m.userId === targetUserId);
+  if (targetMember?.role === 'ADMIN' && conversation.createdBy !== userId)
+    throw new ForbiddenError('Only the group creator can remove an admin');
+
   await removeMemberAtomically(groupId, targetUserId);
 
   const io = getIO();
@@ -266,6 +270,10 @@ export async function changeRole(
   if (targetUserId === userId) throw new BadRequestError('You cannot change your own role');
   if (conversation.createdBy === targetUserId)
     throw new ForbiddenError('Cannot change the group creator role');
+
+  const targetMember = members.find((m) => m.userId === targetUserId);
+  if (targetMember?.role === 'ADMIN' && role === 'MEMBER' && conversation.createdBy !== userId)
+    throw new ForbiddenError('Only the group creator can demote an admin');
 
   await changeRoleAtomically(groupId, targetUserId, role);
 
