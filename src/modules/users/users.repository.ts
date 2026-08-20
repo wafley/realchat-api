@@ -1,7 +1,7 @@
 import db from '../../db/index';
 import { users } from '../../db/schema/users';
 import { refreshTokens } from '../../db/schema/refreshTokens';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 
 export const publicUserColumns = {
   id: users.id,
@@ -47,7 +47,10 @@ export async function updateAvatar(userId: string, avatarUrl: string) {
 
 export async function changePasswordAtomically(userId: string, passwordHash: string) {
   await db.transaction(async (tx) => {
-    await tx.update(users).set({ passwordHash, updatedAt: new Date() }).where(eq(users.id, userId));
+    await tx
+      .update(users)
+      .set({ passwordHash, updatedAt: new Date(), tokenVersion: sql`${users.tokenVersion} + 1` })
+      .where(eq(users.id, userId));
     await tx.delete(refreshTokens).where(eq(refreshTokens.userId, userId));
   });
 }

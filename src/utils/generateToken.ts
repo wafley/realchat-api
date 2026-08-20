@@ -2,8 +2,8 @@ import jwt from 'jsonwebtoken';
 import { randomUUID } from 'node:crypto';
 import { env } from '../config/env';
 
-export function generateAccessToken(payload: { userId: string }): string {
-  return jwt.sign({ ...payload, type: 'access' }, env.jwtAccessSecret, {
+export function generateAccessToken(payload: { userId: string }, tokenVersion: number): string {
+  return jwt.sign({ ...payload, type: 'access', tv: tokenVersion }, env.jwtAccessSecret, {
     expiresIn: env.jwtAccessExpiresIn,
   } as jwt.SignOptions);
 }

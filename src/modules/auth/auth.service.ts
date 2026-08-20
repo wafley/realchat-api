@@ -61,7 +61,7 @@ export async function login(email: string, password: string) {
     throw new UnauthorizedError('Please verify your email before logging in');
   }
 
-  const accessToken = generateAccessToken({ userId: user.id });
+  const accessToken = generateAccessToken({ userId: user.id }, user.tokenVersion);
   const refreshToken = generateRefreshToken({ userId: user.id });
 
   const expiresAt = new Date();
@@ -86,7 +86,7 @@ export async function refresh(oldRefreshToken: string) {
     throw new UnauthorizedError('Invalid or expired refresh token');
   }
 
-  const accessToken = generateAccessToken({ userId });
+  const accessToken = generateAccessToken({ userId }, 0);
   const newRefreshToken = generateRefreshToken({ userId });
 
   const expiresAt = new Date();

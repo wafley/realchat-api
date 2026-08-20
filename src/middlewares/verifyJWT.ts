@@ -23,6 +23,7 @@ export async function verifyJWT(req: AuthRequest, res: Response, next: NextFunct
     const decoded = jwt.verify(token, env.jwtAccessSecret) as {
       userId: string;
       type?: string;
+      tv?: number;
     };
 
     if (decoded.type !== 'access') {
@@ -31,7 +32,7 @@ export async function verifyJWT(req: AuthRequest, res: Response, next: NextFunct
     }
 
     const [user] = await db
-      .select({ isVerified: users.isVerified })
+      .select({ isVerified: users.isVerified, tokenVersion: users.tokenVersion })
       .from(users)
       .where(eq(users.id, decoded.userId))
       .limit(1);
@@ -46,6 +47,11 @@ export async function verifyJWT(req: AuthRequest, res: Response, next: NextFunct
         success: false,
         message: 'Please verify your email before accessing this resource',
       });
+      return;
+    }
+
+    if (decoded.tv !== user.tokenVersion) {
+      res.status(401).json({ success: false, message: 'Invalid or expired access token' });
       return;
     }
 

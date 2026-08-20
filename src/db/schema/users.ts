@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, timestamp, boolean } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, timestamp, boolean, integer } from 'drizzle-orm/pg-core';
 
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -13,6 +13,7 @@ export const users = pgTable('users', {
   isOnline: boolean('is_online').notNull().default(false),
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
   isVerified: boolean('is_verified').notNull().default(false),
+  tokenVersion: integer('token_version').notNull().default(0),
   verificationToken: text('verification_token'),
   verificationTokenExpiresAt: timestamp('verification_token_expires_at', {
     withTimezone: true,

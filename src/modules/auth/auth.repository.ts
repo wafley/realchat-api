@@ -65,7 +65,7 @@ export async function deleteRefreshToken(token: string) {
 export async function updatePassword(userId: string, passwordHash: string) {
   const [user] = await db
     .update(users)
-    .set({ passwordHash, updatedAt: new Date() })
+    .set({ passwordHash, updatedAt: new Date(), tokenVersion: sql`${users.tokenVersion} + 1` })
     .where(eq(users.id, userId))
     .returning();
   return user;
