@@ -261,6 +261,7 @@ export async function getConversationDetail(userId: string, conversationId: stri
   if (!member) throw new ForbiddenError('You are not a member of this conversation');
 
   await repository.unhideConversationForSelf(conversationId, userId);
+  getIO().in(`user:${userId}`).socketsJoin(`conversation:${conversationId}`);
 
   const members = await repository.findMembersByConversationId(conversationId);
   const me = members.find((m) => m.userId === userId);
@@ -420,7 +421,7 @@ export async function deleteMessage(userId: string, conversationId: string, mess
 
   await repository.softDeleteMessage(messageId);
 
-  if (message.fileUrl) {
+  if (message.fileUrl && (await repository.countMessageFileReferences(message.fileUrl)) === 0) {
     const filename = message.fileUrl.split('/').pop();
     if (filename) {
       await unlinkQuietly(path.join(env.uploadDir, filename));

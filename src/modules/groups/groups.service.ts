@@ -11,6 +11,7 @@ import {
   insertMessage,
   deleteConversation,
   findConversationAttachmentPaths,
+  countMessageFileReferences,
 } from '../conversations/conversations.repository';
 import { NotFoundError, BadRequestError, ForbiddenError } from '../../utils/errors';
 import { getIO } from '../../socket/index';
@@ -32,9 +33,11 @@ async function cleanupConversationFiles(
 ) {
   const filePaths = await findConversationAttachmentPaths(conversationId);
   for (const url of filePaths) {
-    const filename = url.split('/').pop();
-    if (filename) {
-      await unlinkQuietly(path.join(env.uploadDir, filename));
+    if ((await countMessageFileReferences(url, conversationId)) === 0) {
+      const filename = url.split('/').pop();
+      if (filename) {
+        await unlinkQuietly(path.join(env.uploadDir, filename));
+      }
     }
   }
   if (avatarUrl) {
