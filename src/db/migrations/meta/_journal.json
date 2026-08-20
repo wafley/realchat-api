@@ -127,6 +127,13 @@
       "when": 1787190593636,
       "tag": "0017_huge_dragon_man",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1787190806893,
+      "tag": "0018_green_ricochet",
+      "breakpoints": true
     }
   ]
 }

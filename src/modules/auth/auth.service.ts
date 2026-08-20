@@ -3,7 +3,9 @@ import { hashPassword, comparePassword } from '../../utils/hashPassword';
 import { generateAccessToken, generateRefreshToken } from '../../utils/generateToken';
 import { sendVerificationEmail, sendResetPasswordEmail } from '../../utils/sendEmail';
 import { ConflictError, UnauthorizedError, BadRequestError } from '../../utils/errors';
-import crypto from 'crypto';
+import { env } from '../../config/env';
+import jwt from 'jsonwebtoken';
+import crypto, { randomUUID } from 'crypto';
 
 export async function register(data: {
   username: string;
@@ -60,17 +62,17 @@ export async function login(email: string, password: string) {
   if (!user.isVerified) {
     throw new UnauthorizedError('Please verify your email before logging in');
   }
-
   const accessToken = generateAccessToken({ userId: user.id }, user.tokenVersion);
   const refreshToken = generateRefreshToken({ userId: user.id });
-
-  const expiresAt = new Date();
-  expiresAt.setDate(expiresAt.getDate() + 7);
+  const refreshPayload = jwt.decode(refreshToken) as { jti: string; exp: number };
 
   await repository.saveRefreshToken({
     userId: user.id,
     token: refreshToken,
-    expiredAt: expiresAt,
+    jti: refreshPayload.jti,
+    familyId: randomUUID(),
+    parentJti: null,
+    expiredAt: new Date(refreshPayload.exp * 1000),
   });
 
   return {
@@ -80,29 +82,78 @@ export async function login(email: string, password: string) {
   };
 }
 
+function verifyRefreshToken(token: string) {
+  try {
+    const decoded = jwt.verify(token, env.jwtRefreshSecret) as {
+      userId: string;
+      type?: string;
+      jti?: string;
+    };
+    if (decoded.type !== 'refresh' || !decoded.jti) {
+      throw new Error('invalid refresh token');
+    }
+    return decoded as { userId: string; jti: string };
+  } catch {
+    throw new UnauthorizedError('Invalid or expired refresh token');
+  }
+}
+
 export async function refresh(oldRefreshToken: string) {
-  const userId = await repository.consumeRefreshToken(oldRefreshToken);
-  if (!userId) {
+  const decoded = verifyRefreshToken(oldRefreshToken);
+  const row = await repository.findRefreshTokenByJti(decoded.jti);
+  if (!row) {
+    throw new UnauthorizedError('Invalid or expired refresh token');
+  }
+  if (row.revokedAt) {
+    await repository.revokeRefreshFamily(row.familyId);
+    throw new UnauthorizedError('Invalid or expired refresh token');
+  }
+  if (row.expiredAt.getTime() <= Date.now()) {
     throw new UnauthorizedError('Invalid or expired refresh token');
   }
 
-  const accessToken = generateAccessToken({ userId }, 0);
-  const newRefreshToken = generateRefreshToken({ userId });
+  const newRefreshToken = generateRefreshToken({ userId: row.userId });
+  const newPayload = jwt.decode(newRefreshToken) as { jti: string; exp: number };
 
-  const expiresAt = new Date();
-  expiresAt.setDate(expiresAt.getDate() + 7);
-
-  await repository.saveRefreshToken({
-    userId,
-    token: newRefreshToken,
-    expiredAt: expiresAt,
+  const rotated = await repository.rotateRefreshToken({
+    oldJti: decoded.jti,
+    familyId: row.familyId,
+    userId: row.userId,
+    newToken: newRefreshToken,
+    newJti: newPayload.jti,
+    parentJti: decoded.jti,
+    expiredAt: new Date(newPayload.exp * 1000),
   });
 
+  if (!rotated) {
+    await repository.revokeRefreshFamily(row.familyId);
+    throw new UnauthorizedError('Invalid or expired refresh token');
+  }
+
+  const user = await repository.findUserById(row.userId);
+  if (!user) {
+    throw new UnauthorizedError('Invalid or expired refresh token');
+  }
+
+  const accessToken = generateAccessToken({ userId: row.userId }, user.tokenVersion);
   return { accessToken, refreshToken: newRefreshToken };
 }
 
 export async function logout(refreshToken: string) {
-  await repository.deleteRefreshToken(refreshToken);
+  try {
+    const decoded = jwt.verify(refreshToken, env.jwtRefreshSecret) as {
+      type?: string;
+      jti?: string;
+    };
+    if (decoded.type === 'refresh' && decoded.jti) {
+      const row = await repository.findRefreshTokenByJti(decoded.jti);
+      if (row) {
+        await repository.revokeRefreshFamily(row.familyId);
+      }
+    }
+  } catch {
+    // Token is already invalid/expired — nothing to revoke.
+  }
 }
 
 export async function forgotPassword(email: string) {
