@@ -1,3 +1,8 @@
+/**
+ * Definisi rute autentikasi (/register, /login, /refresh, /logout, dll).
+ * Setiap rute dirangkai dengan rate limiter, middleware validasi Zod,
+ * dan controller terkait; rute DELETE /me dilindungi verifyJWT.
+ */
 import { Router } from 'express';
 import { verifyJWT } from '../../middlewares/verifyJWT';
 import { validate } from '../../middlewares/validate';
@@ -5,6 +10,7 @@ import { authRateLimiter, refreshRateLimiter } from '../../middlewares/rateLimit
 import * as validator from './auth.validator';
 import * as controller from './auth.controller';
 
+/** Instance router Express untuk seluruh endpoint autentikasi. */
 const router = Router();
 
 router.post('/register', authRateLimiter, validate(validator.registerSchema), controller.register);
@@ -37,4 +43,5 @@ router.delete(
   controller.deleteAccount,
 );
 
+/** Router autentikasi yang dipasang pada path /api/auth. */
 export default router;

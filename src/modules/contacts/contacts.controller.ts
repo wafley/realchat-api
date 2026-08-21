@@ -1,8 +1,14 @@
+/**
+ * Controller endpoint kontak: tambah per username/massal, hapus, ubah nama
+ * kustom, daftar kontak, cek status kontak, dan relasi dua arah. Meneruskan
+ * pekerjaan ke contacts.service dan mengirim respons JSON.
+ */
 import { Response, NextFunction } from 'express';
 import { AuthRequest } from '../../middlewares/verifyJWT';
 import * as contactService from './contacts.service';
 import { contactListQuerySchema } from './contacts.validator';
 
+/** Menambahkan kontak berdasarkan username yang dikirim di body. */
 export async function addContactByUsername(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const result = await contactService.addContactByUsername(
@@ -16,6 +22,7 @@ export async function addContactByUsername(req: AuthRequest, res: Response, next
   }
 }
 
+/** Menghapus kontak berdasarkan userId di parameter rute. */
 export async function removeContact(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     await contactService.removeContact(req.userId!, req.params.userId as string);
@@ -25,6 +32,7 @@ export async function removeContact(req: AuthRequest, res: Response, next: NextF
   }
 }
 
+/** Memperbarui nama kustom kontak di parameter rute. */
 export async function updateCustomName(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const result = await contactService.updateContactCustomName(
@@ -38,6 +46,7 @@ export async function updateCustomName(req: AuthRequest, res: Response, next: Ne
   }
 }
 
+/** Menambahkan banyak kontak sekaligus dari daftar userIds di body. */
 export async function addContactsBulk(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const result = await contactService.addContactsBulk(req.userId!, req.body.userIds as string[]);
@@ -47,6 +56,7 @@ export async function addContactsBulk(req: AuthRequest, res: Response, next: Nex
   }
 }
 
+/** Mengembalikan daftar kontak dengan dukungan query sort dan search. */
 export async function getMyContacts(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const { sort, search } = contactListQuerySchema.parse(req.query);
@@ -57,6 +67,7 @@ export async function getMyContacts(req: AuthRequest, res: Response, next: NextF
   }
 }
 
+/** Memeriksa apakah pengguna di parameter rute adalah kontak milik sendiri. */
 export async function checkContact(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const isContact = await contactService.checkContact(req.userId!, req.params.userId as string);
@@ -66,6 +77,7 @@ export async function checkContact(req: AuthRequest, res: Response, next: NextFu
   }
 }
 
+/** Mengembalikan status relasi kontak dua arah dengan pengguna di parameter. */
 export async function getRelationship(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const result = await contactService.getRelationship(req.userId!, req.params.userId as string);

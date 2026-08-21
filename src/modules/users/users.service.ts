@@ -1,3 +1,8 @@
+/**
+ * Logika bisnis pengguna: profil, avatar, ganti password, dan blokir.
+ * Setiap perubahan profil memicu event socket 'user:updated' ke kontak
+ * dan anggota grup terkait agar tampilan tetap sinkron secara realtime.
+ */
 import * as repository from './users.repository';
 import * as blockedRepository from './blockedUsers.repository';
 import { findUserById, findUserByUsername } from '../auth/auth.repository';
@@ -13,6 +18,10 @@ import { unlinkQuietly } from '../../utils/cleanup';
 import { env } from '../../config/env';
 import path from 'path';
 
+/**
+ * Menyebarkan event 'user:updated' ke semua pihak yang perlu tahu perubahan
+ * profil: kontak dua arah dan sesama anggota grup pengguna.
+ */
 async function emitProfileUpdate(
   userId: string,
   updated: {
@@ -36,6 +45,7 @@ async function emitProfileUpdate(
       .where(and(eq(conversationMembers.userId, userId), eq(conversations.type, 'GROUP'))),
   ]);
 
+  // Kumpulkan penerima unik: kontak dua arah + anggota grup milik pengguna.
   const recipients = new Set<string>();
   for (const row of contactRows) {
     recipients.add(row.userId === userId ? row.contactId : row.userId);
@@ -75,6 +85,9 @@ async function emitProfileUpdate(
   }
 }
 
+/** Mengambil profil lengkap milik pengguna sendiri.
+ * @throws NotFoundError jika pengguna tidak ditemukan
+ */
 export async function getProfile(userId: string) {
   const user = await findUserById(userId);
   if (!user) throw new NotFoundError('User not found');
@@ -94,8 +107,16 @@ export async function getProfile(userId: string) {
   };
 }
 
+/** Jeda minimum (hari) antar penggantian username untuk mencegah penyalahgunaan. */
 const USERNAME_COOLDOWN_DAYS = 14;
 
+/**
+ * Memperbarui profil pengguna. Penggantian username diperiksa keunikan dan
+ * dibatasi oleh cooldown 14 hari sejak pergantian terakhir.
+ * @throws NotFoundError jika pengguna tidak ada
+ * @throws ConflictError jika username baru sudah dipakai orang lain
+ * @throws BadRequestError jika masih dalam masa cooldown username
+ */
 export async function updateProfile(
   userId: string,
   data: { username?: string; fullName?: string; bio?: string | null; statusText?: string },
@@ -127,8 +148,14 @@ export async function updateProfile(
   return updated;
 }
 
+/**
+ * Mengambil profil publik pengguna lain. Jika ada relasi blokir dua arah,
+ * kehadiran (isOnline/lastSeenAt) disembunyikan dari penampil.
+ * @throws NotFoundError jika pengguna tidak ada atau sudah dihapus
+ */
 export async function getUserById(viewerId: string, targetId: string) {
   const user = await findUserById(targetId);
+  // Guard deletedAt: akun yang sudah dihapus diperlakukan tidak ada.
   if (!user || user.deletedAt) throw new NotFoundError('User not found');
 
   const presenceHidden =
@@ -145,6 +172,11 @@ export async function getUserById(viewerId: string, targetId: string) {
   };
 }
 
+/**
+ * Mengganti avatar: simpan URL file baru lalu hapus file avatar lama dari
+ * disk agar tidak menumpuk file yatim.
+ * @throws NotFoundError jika pengguna tidak ditemukan
+ */
 export async function updateAvatar(userId: string, file: Express.Multer.File) {
   const user = await findUserById(userId);
   if (!user) throw new NotFoundError('User not found');
@@ -163,6 +195,13 @@ export async function updateAvatar(userId: string, file: Express.Multer.File) {
   return updated;
 }
 
+/**
+ * Mengganti password setelah verifikasi password lama. tokenVersion dinaikkan
+ * secara atomik bersama penghapusan refresh token, lalu semua socket aktif
+ * dipaksa terputus agar sesi lama benar-benar berakhir.
+ * @throws NotFoundError jika pengguna tidak ditemukan
+ * @throws BadRequestError jika password lama salah
+ */
 export async function changePassword(userId: string, oldPassword: string, newPassword: string) {
   const user = await findUserById(userId);
   if (!user) throw new NotFoundError('User not found');
@@ -175,6 +214,12 @@ export async function changePassword(userId: string, oldPassword: string, newPas
   getIO().in(`user:${userId}`).disconnectSockets(true);
 }
 
+/**
+ * Memblokir pengguna lain.
+ * @throws BadRequestError jika mencoba memblokir diri sendiri
+ * @throws NotFoundError jika target tidak ditemukan
+ * @throws ConflictError jika target sudah diblokir sebelumnya
+ */
 export async function blockUser(userId: string, targetId: string) {
   if (userId === targetId) throw new BadRequestError('Cannot block yourself');
 
@@ -187,6 +232,11 @@ export async function blockUser(userId: string, targetId: string) {
   await blockedRepository.insertBlock(userId, targetId);
 }
 
+/**
+ * Membuka blokir pengguna.
+ * @throws BadRequestError jika mencoba membuka blokir diri sendiri
+ * @throws NotFoundError jika target memang tidak sedang diblokir
+ */
 export async function unblockUser(userId: string, targetId: string) {
   if (userId === targetId) throw new BadRequestError('Cannot unblock yourself');
 
@@ -196,6 +246,7 @@ export async function unblockUser(userId: string, targetId: string) {
   await blockedRepository.deleteBlock(userId, targetId);
 }
 
+/** Mengembalikan daftar pengguna yang diblokir oleh pengguna tersebut. */
 export async function getBlockedUsers(userId: string) {
   return blockedRepository.listBlocked(userId);
 }

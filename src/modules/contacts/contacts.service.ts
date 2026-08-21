@@ -1,3 +1,8 @@
+/**
+ * Logika bisnis kontak: tambah (per username/massal), hapus, ubah nama
+ * kustom, cek status kontak, dan relasi dua arah. Setiap penambahan memicu
+ * notifikasi dan event socket 'contact:new' ke pengguna yang ditambahkan.
+ */
 import * as repository from './contacts.repository';
 import { findUserById, findUserByUsername, findUsersByIds } from '../auth/auth.repository';
 import { NotFoundError, ConflictError, BadRequestError, ForbiddenError } from '../../utils/errors';
@@ -5,8 +10,10 @@ import { getIO } from '../../socket/index';
 import { hasBlockRelation, getBlockRelationUserIds } from '../users/blockedUsers.repository';
 import type { CreateNotificationData } from '../notifications/notifications.repository';
 
+/** Data ringkas aktor (pemilik kontak) untuk isi notifikasi dan event socket. */
 type ContactActor = { username: string | null; fullName: string | null; avatarUrl: string | null };
 
+/** Menyusun data notifikasi 'Kontak Baru' untuk pengguna yang ditambahkan. */
 function buildContactNotification(
   myId: string,
   targetUserId: string,
@@ -21,6 +28,7 @@ function buildContactNotification(
   };
 }
 
+/** Mengirim event socket 'contact:new' ke pengguna yang baru ditambahkan. */
 function emitContactAdded(myId: string, targetUserId: string, me: ContactActor | null) {
   getIO()
     .to(`user:${targetUserId}`)
@@ -34,6 +42,7 @@ function emitContactAdded(myId: string, targetUserId: string, me: ContactActor |
     });
 }
 
+/** Menyimpan kontak + notifikasi lewat repository lalu menyiarkan event socket. */
 async function insertContactAndNotify(myId: string, targetUserId: string, customName?: string) {
   const me = await findUserById(myId);
   const contact = await repository.addContactAndNotify(myId, targetUserId, customName, [
@@ -43,6 +52,13 @@ async function insertContactAndNotify(myId: string, targetUserId: string, custom
   return contact;
 }
 
+/**
+ * Menambahkan kontak berdasarkan username target.
+ * @throws NotFoundError jika username tidak terdaftar
+ * @throws BadRequestError jika menambahkan diri sendiri
+ * @throws ConflictError jika sudah menjadi kontak
+ * @throws ForbiddenError jika ada relasi blokir di antara kedua pengguna
+ */
 export async function addContactByUsername(myId: string, username: string, customName?: string) {
   const target = await findUserByUsername(username);
   if (!target) throw new NotFoundError('User not found');
@@ -58,6 +74,10 @@ export async function addContactByUsername(myId: string, username: string, custo
   return insertContactAndNotify(myId, target.id, customName);
 }
 
+/**
+ * Menghapus kontak dari daftar milik sendiri dan memberi tahu pihak lain
+ * lewat event socket 'contact:remove'.
+ */
 export async function removeContact(myId: string, targetUserId: string) {
   if (myId === targetUserId) return;
 
@@ -66,6 +86,10 @@ export async function removeContact(myId: string, targetUserId: string) {
   getIO().to(`user:${targetUserId}`).emit('contact:remove', { userId: myId });
 }
 
+/**
+ * Mengubah nama kustom kontak milik sendiri.
+ * @throws NotFoundError jika relasi kontak tidak ditemukan
+ */
 export async function updateContactCustomName(
   myId: string,
   targetUserId: string,
@@ -77,6 +101,12 @@ export async function updateContactCustomName(
   return repository.updateContactCustomName(myId, targetUserId, customName);
 }
 
+/**
+ * Menambahkan banyak kontak sekaligus: deduplikasi ID, validasi keberadaan
+ * semua target, tolak jika ada relasi blokir, lalu simpan dan notifikasi.
+ * @throws NotFoundError jika ada ID yang tidak terdaftar
+ * @throws ForbiddenError jika ada target yang berrelasi blokir
+ */
 export async function addContactsBulk(myId: string, targetUserIds: string[]) {
   const uniqueIds = [...new Set(targetUserIds)].filter((id) => id !== myId);
   if (uniqueIds.length === 0) return [];
@@ -105,6 +135,10 @@ export async function addContactsBulk(myId: string, targetUserIds: string[]) {
   return contacts;
 }
 
+/**
+ * Mengambil daftar kontak milik pengguna. Kehadiran (isOnline/lastSeenAt)
+ * disembunyikan untuk kontak yang berrelasi blokir.
+ */
 export async function getMyContacts(userId: string, sort?: string, search?: string) {
   const rows = await repository.findContacts(userId, sort, search);
   const blockedIds = new Set(await getBlockRelationUserIds(userId));
@@ -115,6 +149,10 @@ export async function getMyContacts(userId: string, sort?: string, search?: stri
   }));
 }
 
+/**
+ * Memeriksa apakah target adalah kontak milik sendiri. Selalu false untuk
+ * diri sendiri maupun jika ada relasi blokir.
+ */
 export async function checkContact(myId: string, targetUserId: string) {
   if (myId === targetUserId) return false;
   if (await hasBlockRelation(myId, targetUserId)) return false;
@@ -123,6 +161,11 @@ export async function checkContact(myId: string, targetUserId: string) {
   return Boolean(contact);
 }
 
+/**
+ * Menentukan status relasi dua arah: 'mutual' (saling kontak), 'added'
+ * (saya menambahkan), 'added_you' (ditambahkan oleh mereka), 'none', atau
+ * null untuk diri sendiri. Blokir dua arah selalu menghasilkan 'none'.
+ */
 export async function getRelationship(myId: string, targetUserId: string) {
   if (myId === targetUserId) return null;
   if (await hasBlockRelation(myId, targetUserId)) return 'none';

@@ -1,3 +1,8 @@
+/**
+ * Rute profil dan relasi pengguna: lihat/ubah profil sendiri, unggah avatar,
+ * ganti password, serta blokir/buka blokir pengguna lain. Semua rute
+ * dilindungi middleware verifyJWT.
+ */
 import { Router } from 'express';
 import { verifyJWT } from '../../middlewares/verifyJWT';
 import { validate } from '../../middlewares/validate';
@@ -8,6 +13,7 @@ import * as controller from './users.controller';
 import { getRelationship } from '../contacts/contacts.controller';
 import { userIdParamSchema } from '../contacts/contacts.validator';
 
+/** Instance router Express untuk endpoint pengguna (dipasang di /api/users). */
 const router = Router();
 
 router.get('/me', verifyJWT, controller.getMe);
@@ -46,4 +52,5 @@ router.get(
 );
 router.get('/:id', verifyJWT, controller.getUserById);
 
+/** Router pengguna yang diekspor untuk didaftarkan di aplikasi utama. */
 export default router;

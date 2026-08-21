@@ -1,9 +1,15 @@
+/**
+ * Controller endpoint pengguna: profil sendiri, profil publik, avatar,
+ * ganti password, serta blokir/buka blokir. Meneruskan pekerjaan ke
+ * users.service dan mengirim respons JSON.
+ */
 import { Response, NextFunction } from 'express';
 import { AuthRequest } from '../../middlewares/verifyJWT';
 import { BadRequestError } from '../../utils/errors';
 import * as userService from './users.service';
 import { userIdSchema } from './users.validator';
 
+/** Mengembalikan profil lengkap pengguna yang sedang login. */
 export async function getMe(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const result = await userService.getProfile(req.userId!);
@@ -13,6 +19,7 @@ export async function getMe(req: AuthRequest, res: Response, next: NextFunction)
   }
 }
 
+/** Memperbarui profil (username, nama, bio, status) milik sendiri. */
 export async function updateMe(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const result = await userService.updateProfile(req.userId!, req.body);
@@ -22,6 +29,7 @@ export async function updateMe(req: AuthRequest, res: Response, next: NextFuncti
   }
 }
 
+/** Mengambil profil publik pengguna lain berdasarkan ID di parameter rute. */
 export async function getUserById(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const { id } = userIdSchema.parse(req.params);
@@ -32,6 +40,7 @@ export async function getUserById(req: AuthRequest, res: Response, next: NextFun
   }
 }
 
+/** Mengunggah dan memperbarui avatar pengguna yang sedang login. */
 export async function uploadAvatar(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     if (!req.file) throw new BadRequestError('No file uploaded');
@@ -42,6 +51,7 @@ export async function uploadAvatar(req: AuthRequest, res: Response, next: NextFu
   }
 }
 
+/** Mengganti password setelah memverifikasi password lama. */
 export async function changePassword(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     await userService.changePassword(req.userId!, req.body.oldPassword, req.body.newPassword);
@@ -51,6 +61,7 @@ export async function changePassword(req: AuthRequest, res: Response, next: Next
   }
 }
 
+/** Memblokir pengguna lain berdasarkan ID di parameter rute. */
 export async function blockUser(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const { id } = userIdSchema.parse(req.params);
@@ -61,6 +72,7 @@ export async function blockUser(req: AuthRequest, res: Response, next: NextFunct
   }
 }
 
+/** Membuka blokir pengguna yang sebelumnya diblokir. */
 export async function unblockUser(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const { id } = userIdSchema.parse(req.params);
@@ -71,6 +83,7 @@ export async function unblockUser(req: AuthRequest, res: Response, next: NextFun
   }
 }
 
+/** Mengembalikan daftar pengguna yang diblokir oleh pengguna saat ini. */
 export async function getBlockedUsers(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const result = await userService.getBlockedUsers(req.userId!);
