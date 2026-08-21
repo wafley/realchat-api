@@ -133,6 +133,29 @@ export async function updatePrivacySettings(
   return updated;
 }
 
+/**
+ * Mengambil preferensi notifikasi milik pengguna yang sedang login.
+ * @throws NotFoundError jika pengguna tidak ditemukan
+ */
+export async function getNotificationPreferences(userId: string) {
+  const prefs = await repository.findNotificationPreferences(userId);
+  if (!prefs) throw new NotFoundError('User not found');
+  return prefs;
+}
+
+/**
+ * Memperbarui sebagian atau seluruh preferensi notifikasi milik sendiri.
+ * @throws NotFoundError jika pengguna tidak ditemukan
+ */
+export async function updateNotificationPreferences(
+  userId: string,
+  data: { notifyNewMessages?: boolean; notifyGroupInvites?: boolean },
+) {
+  const updated = await repository.updateNotificationPreferences(userId, data);
+  if (!updated) throw new NotFoundError('User not found');
+  return updated;
+}
+
 /** Jeda minimum (hari) antar penggantian username untuk mencegah penyalahgunaan. */
 const USERNAME_COOLDOWN_DAYS = 14;
 

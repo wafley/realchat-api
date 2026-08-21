@@ -46,6 +46,13 @@ router.put(
   validate(validator.updatePrivacySchema),
   controller.updatePrivacy,
 );
+router.get('/me/notification-preferences', verifyJWT, controller.getNotificationPreferences);
+router.put(
+  '/me/notification-preferences',
+  verifyJWT,
+  validate(validator.updateNotificationPreferencesSchema),
+  controller.updateNotificationPreferences,
+);
 router.post(
   '/:id/block',
   verifyJWT,

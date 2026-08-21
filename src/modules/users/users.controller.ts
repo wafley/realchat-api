@@ -123,3 +123,33 @@ export async function updatePrivacy(req: AuthRequest, res: Response, next: NextF
     next(error);
   }
 }
+
+/** Mengembalikan preferensi notifikasi pengguna yang sedang login. */
+export async function getNotificationPreferences(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const result = await userService.getNotificationPreferences(req.userId!);
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/** Memperbarui preferensi notifikasi (push pesan masuk & undangan grup). */
+export async function updateNotificationPreferences(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const result = await userService.updateNotificationPreferences(req.userId!, req.body);
+    res
+      .status(200)
+      .json({ success: true, message: 'Notification preferences updated', data: result });
+  } catch (error) {
+    next(error);
+  }
+}
