@@ -1,3 +1,9 @@
+/**
+ * Logika bisnis modul percakapan: pembuatan chat privat, pengiriman
+ * pesan lampiran, daftar/detail percakapan, siklus pesan (edit, hapus,
+ * semat, bintang, teruskan), status terbaca, bisu, dan bersih-riwayat.
+ * Menjadi jembatan antara controller/socket dengan repository.
+ */
 import * as repository from './conversations.repository';
 import * as groupService from '../groups/groups.service';
 import { findUserById } from '../auth/auth.repository';
@@ -18,6 +24,13 @@ import {
   getBlockRelationUserIds,
 } from '../users/blockedUsers.repository';
 
+/**
+ * Membuat percakapan privat baru atau mengembalikan yang sudah ada,
+ * lalu menggabungkan socket kedua pihak ke room percakapan.
+ * @throws BadRequestError jika participantId kosong atau diri sendiri
+ * @throws NotFoundError jika partisipan tidak ada / belum verifikasi
+ * @throws ForbiddenError jika salah satu pihak memblokir
+ */
 export async function createConversation(userId: string, data: { participantId: string }) {
   if (!data.participantId) throw new BadRequestError('participantId is required for private chat');
   if (data.participantId === userId)
@@ -56,6 +69,7 @@ export async function sendAttachmentMessage(
   file: Express.Multer.File,
 ) {
   try {
+    // Batasi laju kirim per pengguna untuk mencegah spam.
     if (!messageRateLimiter.allow(userId)) {
       throw new AppError('Rate limit exceeded. Please slow down.', 429);
     }
@@ -80,6 +94,7 @@ export async function sendAttachmentMessage(
         throw new BadRequestError('Replied message not found in this conversation');
     }
 
+    // Tentukan tipe pesan dari mimetype berkas yang diunggah.
     const type = file.mimetype.startsWith('image/')
       ? 'IMAGE'
       : file.mimetype.startsWith('video/')
@@ -91,6 +106,8 @@ export async function sendAttachmentMessage(
 
     const members = await repository.findConversationMemberIds(conversationId);
     const now = new Date();
+    // Hitung status awal tiap penerima; bila sedang membuka chat
+    // (aktif), pesan langsung berstatus SEEN dengan seenAt sekarang.
     const recipientRows = members
       .filter((member) => member.userId !== userId)
       .map((member) => {
@@ -103,6 +120,7 @@ export async function sendAttachmentMessage(
         };
       });
 
+    // Pesan + status penerima disimpan dalam satu transaksi atomik.
     const message = await repository.insertAttachmentMessageAtomically(
       conversationId,
       userId,
@@ -123,12 +141,15 @@ export async function sendAttachmentMessage(
       })),
     );
 
+    // Pesan baru membuat percakapan tampil kembali bagi yang
+    // pernah menyembunyikannya (hiddenAt dikosongkan).
     await repository.unhideConversationMembers(conversationId, [
       userId,
       ...recipientRows.map((row) => row.userId),
     ]);
 
     for (const row of recipientRows) {
+      // Emit status awal ke pengirim agar UI-nya sinkron seketika.
       if (row.status === 'DELIVERED' || row.status === 'SEEN') {
         getIO()
           .to(`user:${userId}`)
@@ -146,6 +167,7 @@ export async function sendAttachmentMessage(
 
     getIO().to(`conversation:${conversationId}`).emit('message:new', messagePayload);
 
+    // Push notification hanya untuk penerima offline (status SENT).
     const offlineTargets = recipientRows
       .filter((row) => row.status === 'SENT')
       .map((row) => ({ userId: row.userId, mutedUntil: row.mutedUntil ?? null }));
@@ -165,15 +187,19 @@ export async function sendAttachmentMessage(
 
     return messagePayload;
   } catch (error) {
+    // Gagal kirim: hapus berkas yang sudah tersimpan agar tidak yatim.
     await unlinkQuietly(file.path);
     throw error;
   }
 }
 
+// Kursor komposit "sortKey|id" dienkode base64url; pasangan (waktu, id)
+// membuat paginasi keyset tetap stabil walau ada timestamp kembar.
 function encodeCompositeCursor(sortKey: Date, conversationId: string): string {
   return Buffer.from(`${sortKey.toISOString()}|${conversationId}`).toString('base64url');
 }
 
+// Dekode & validasi kursor komposit: format, sortKey tanggal, dan id UUID.
 function decodeCompositeCursor(cursor: string): { sortKey: string; id: string } {
   const decoded = Buffer.from(cursor, 'base64url').toString('utf8');
   const separator = decoded.indexOf('|');
@@ -189,6 +215,10 @@ function decodeCompositeCursor(cursor: string): { sortKey: string; id: string } 
   return { sortKey, id };
 }
 
+/**
+ * Daftar percakapan pengguna untuk sidebar: nama tampilan, kehadiran
+ * lawan bicara, hitungan belum dibaca, pesan terakhir, dan kursor.
+ */
 export async function getConversations(
   userId: string,
   options: { search?: string; cursor?: string; limit?: number },
@@ -197,9 +227,11 @@ export async function getConversations(
   const cursor = options.cursor ? decodeCompositeCursor(options.cursor) : undefined;
   const rows = await repository.findConversationList(userId, { ...options, cursor, limit });
 
+  // Repository mengambil limit+1 baris; baris ekstra = masih ada halaman.
   const hasMore = rows.length > limit;
   const page = hasMore ? rows.slice(0, limit) : rows;
 
+  // Kehadiran (online/lastSeen) disembunyikan bila saling memblokir.
   const blockedIds = await getBlockRelationUserIds(userId);
 
   const conversations = page.map((row) => {
@@ -212,6 +244,7 @@ export async function getConversations(
 
     const avatar = isPrivate ? (row.peerAvatarUrl ?? null) : row.avatarUrl;
 
+    // Pesan terakhir disembunyikan bila lebih tua dari clearedAt.
     const clearedAt = row.clearedAt ? new Date(row.clearedAt) : null;
     const lastMessage =
       row.lastMessageId &&
@@ -257,6 +290,7 @@ export async function getConversations(
   });
 
   const lastItem = page[page.length - 1];
+  // Kursor halaman berikutnya memakai kunci urutan item terakhir.
   const nextCursor = hasMore
     ? encodeCompositeCursor(lastItem.lastMessageCreatedAt ?? lastItem.createdAt, lastItem.id)
     : null;
@@ -264,6 +298,7 @@ export async function getConversations(
   return { conversations, nextCursor };
 }
 
+/** Detail percakapan + anggota; membuka kembali chat yang disembunyikan. */
 export async function getConversationDetail(userId: string, conversationId: string) {
   const conversation = await repository.findConversationById(conversationId);
   if (!conversation) throw new NotFoundError('Conversation not found');
@@ -271,6 +306,8 @@ export async function getConversationDetail(userId: string, conversationId: stri
   const member = await repository.isMember(conversationId, userId);
   if (!member) throw new ForbiddenError('You are not a member of this conversation');
 
+  // Membuka detail = tampilkan lagi untuk diri sendiri (hiddenAt null)
+  // dan pastikan socket pengguna bergabung ke room percakapan.
   await repository.unhideConversationForSelf(conversationId, userId);
   getIO().in(`user:${userId}`).socketsJoin(`conversation:${conversationId}`);
 
@@ -304,6 +341,11 @@ export async function getConversationDetail(userId: string, conversationId: stri
   };
 }
 
+/**
+ * Keluar dari percakapan. Grup didelegasikan ke service grup;
+ * percakapan privat hanya disembunyikan untuk diri sendiri (hiddenAt)
+ * sehingga riwayat lawan tetap utuh.
+ */
 export async function leaveConversation(userId: string, conversationId: string) {
   const conversation = await repository.findConversationById(conversationId);
   if (!conversation) throw new NotFoundError('Conversation not found');
@@ -319,6 +361,10 @@ export async function leaveConversation(userId: string, conversationId: string) 
   await forceLeaveConversationRoom(userId, conversationId);
 }
 
+/**
+ * Riwayat pesan percakapan dengan paginasi mundur (terbaru -> lama).
+ * Pesan sebelum clearedAt pengguna tidak dikembalikan.
+ */
 export async function getMessages(
   userId: string,
   conversationId: string,
@@ -340,6 +386,7 @@ export async function getMessages(
     membership?.clearedAt,
     userId,
   );
+  // Query mengambil limit+1 baris untuk mendeteksi halaman berikutnya.
   const hasMore = rawMessages.length > limit;
   const messagesList = hasMore ? rawMessages.slice(0, limit) : rawMessages;
 
@@ -354,6 +401,7 @@ export async function getMessages(
       ...message
     }) => ({
       ...message,
+      // Rank agregat dikonversi ke label status yang dikonsumsi klien.
       status:
         statusRank == null || statusRank < 1 ? 'SENT' : statusRank >= 2 ? 'SEEN' : 'DELIVERED',
       seenAt: seenAt ? seenAt.toISOString() : null,
@@ -377,6 +425,10 @@ export async function getMessages(
   };
 }
 
+/**
+ * Bersihkan riwayat untuk diri sendiri: set clearedAt lalu tandai
+ * pesan masuk yang tersembunyi itu sebagai SEEN agar unread bersih.
+ */
 export async function clearConversation(userId: string, conversationId: string) {
   const conversation = await repository.findConversationById(conversationId);
   if (!conversation) throw new NotFoundError('Conversation not found');
@@ -386,6 +438,8 @@ export async function clearConversation(userId: string, conversationId: string) 
 
   const row = await repository.clearConversation(conversationId, userId);
 
+  // Pesan sebelum clearedAt tak lagi terlihat; tandai SEEN supaya
+  // hitungan belum-dibaca ikut kosong.
   const incomingIds = await repository.findIncomingMessageIdsByConversation(conversationId, userId);
   if (incomingIds.length > 0) {
     await repository.markMessagesSeen(userId, incomingIds, new Date());
@@ -394,6 +448,10 @@ export async function clearConversation(userId: string, conversationId: string) 
   return { clearedAt: row?.clearedAt ? row.clearedAt.toISOString() : null };
 }
 
+/**
+ * Edit isi pesan milik sendiri lalu siarkan event message:edited.
+ * @throws ForbiddenError jika bukan pengirim / bukan anggota
+ */
 export async function editMessage(
   userId: string,
   conversationId: string,
@@ -418,6 +476,11 @@ export async function editMessage(
   return updated;
 }
 
+/**
+ * Hapus lunak pesan milik sendiri dan siarkan event message:deleted.
+ * Berkas lampiran dihapus fisik hanya bila tidak ada pesan lain
+ * (mis. hasil forward) yang masih mereferensikan fileUrl yang sama.
+ */
 export async function deleteMessage(userId: string, conversationId: string, messageId: string) {
   const message = await repository.findMessageById(messageId);
   if (!message) throw new NotFoundError('Message not found');
@@ -432,6 +495,7 @@ export async function deleteMessage(userId: string, conversationId: string, mess
 
   await repository.softDeleteMessage(messageId);
 
+  // Reference-aware unlink: hitung dulu referensi fileUrl lain.
   if (message.fileUrl && (await repository.countMessageFileReferences(message.fileUrl)) === 0) {
     const filename = message.fileUrl.split('/').pop();
     if (filename) {
@@ -444,6 +508,10 @@ export async function deleteMessage(userId: string, conversationId: string, mess
     .emit('message:deleted', { conversationId, messageId });
 }
 
+/**
+ * Sematkan / lepas sematan pesan lalu siarkan event ke room percakapan.
+ * @throws BadRequestError bila menyematkan pesan terhapus atau SYSTEM
+ */
 export async function setMessagePinned(
   userId: string,
   conversationId: string,
@@ -471,6 +539,12 @@ export async function setMessagePinned(
   return { isPinned };
 }
 
+/**
+ * Tandai pesan masuk percakapan sebagai SEEN dan kirim event status
+ * ke masing-masing pengirim.
+ * @param options.before Cutoff opsional: hanya pesan dengan createdAt
+ *   <= waktu tsb yang ditandai (sinkronisasi SEEN dari klien)
+ */
 export async function markConversationAsRead(
   userId: string,
   conversationId: string,
@@ -507,6 +581,11 @@ export async function markConversationAsRead(
   return { updated: changedIds.length, seenAt: now.toISOString() };
 }
 
+/**
+ * Teruskan pesan ke percakapan tujuan sebagai pesan baru: konten dan
+ * metadata berkas disalin (fileUrl dipakai ulang, bukan dipindah),
+ * lengkap dengan status penerima, event realtime, dan push notifikasi.
+ */
 export async function forwardMessage(
   userId: string,
   sourceConversationId: string,
@@ -540,6 +619,7 @@ export async function forwardMessage(
 
   const memberRows = await repository.findConversationMemberIds(targetConversationId);
   const now = new Date();
+  // Status awal penerima di tujuan; penerima aktif langsung SEEN.
   const recipientRows = memberRows
     .filter((member) => member.userId !== userId)
     .map((member) => {
@@ -551,6 +631,7 @@ export async function forwardMessage(
       };
     });
 
+  // Pesan salinan + status penerima dibuat dalam satu transaksi.
   const created = await repository.forwardMessageAtomically(
     targetConversationId,
     userId,
@@ -611,6 +692,7 @@ export async function forwardMessage(
   return createdPayload;
 }
 
+/** Daftar pesan tersemat percakapan beserta data pengirimnya. */
 export async function getPinnedMessages(userId: string, conversationId: string, limit = 50) {
   const conversation = await repository.findConversationById(conversationId);
   if (!conversation) throw new NotFoundError('Conversation not found');
@@ -630,6 +712,11 @@ export async function getPinnedMessages(userId: string, conversationId: string, 
   }));
 }
 
+/**
+ * Beri / hapus bintang pada pesan untuk pengguna, lalu emit event
+ * message:star:updated ke pemilik bintang.
+ * @returns starredAt waktu pemberian bintang, null bila dihapus
+ */
 export async function setMessageStar(
   userId: string,
   conversationId: string,
@@ -664,6 +751,10 @@ export async function setMessageStar(
   return { starredAt };
 }
 
+/**
+ * Daftar pesan berbintang milik pengguna lintas percakapan dengan
+ * paginasi keyset berbasis (starredAt, id).
+ */
 export async function getStarredMessages(userId: string, cursor?: string, limit = 50) {
   const decodedCursor = cursor ? decodeCompositeCursor(cursor) : undefined;
   const rows = await repository.findStarredMessages(userId, decodedCursor, limit);
@@ -706,12 +797,18 @@ export async function getStarredMessages(userId: string, cursor?: string, limit 
   };
 }
 
+// "Bisu selamanya" dimodelkan sebagai tanggal yang sangat jauh.
 const MUTE_FOREVER_YEARS = 10;
 
 function muteForeverDate(): Date {
   return new Date(Date.now() + MUTE_FOREVER_YEARS * 365 * 24 * 60 * 60 * 1000);
 }
 
+/**
+ * Bisukan percakapan untuk diri sendiri sampai waktu tertentu;
+ * tanpa `until` berarti bisu "selamanya".
+ * @throws BadRequestError bila until tidak valid atau di masa lalu
+ */
 export async function setConversationMute(userId: string, conversationId: string, until?: string) {
   const conversation = await repository.findConversationById(conversationId);
   if (!conversation) throw new NotFoundError('Conversation not found');
@@ -733,6 +830,7 @@ export async function setConversationMute(userId: string, conversationId: string
   return { mutedUntil: (row?.mutedUntil ?? mutedUntil).toISOString() };
 }
 
+/** Matikan bisu percakapan untuk diri sendiri. */
 export async function unmuteConversation(userId: string, conversationId: string) {
   const conversation = await repository.findConversationById(conversationId);
   if (!conversation) throw new NotFoundError('Conversation not found');

@@ -1,3 +1,7 @@
+/**
+ * Skema status pengiriman pesan per penerima (SENT/DELIVERED/SEEN).
+ * Satu baris unik per (messageId, userId) - dasar read receipt.
+ */
 import { pgTable, uuid, varchar, timestamp, unique } from 'drizzle-orm/pg-core';
 import { users } from './users';
 import { messages } from './messages';

@@ -1,7 +1,13 @@
+/**
+ * Controller untuk endpoint autentikasi: registrasi, login, refresh/logout
+ * token, reset & verifikasi email, serta penghapusan akun. Bertugas menerima
+ * request HTTP, memanggil auth.service, dan mengirim respons JSON.
+ */
 import { Request, Response, NextFunction } from 'express';
 import { AuthRequest } from '../../middlewares/verifyJWT';
 import * as authService from './auth.service';
 
+/** Mendaftarkan pengguna baru lalu mengirim email verifikasi. */
 export async function register(req: Request, res: Response, next: NextFunction) {
   try {
     const result = await authService.register(req.body);
@@ -11,6 +17,7 @@ export async function register(req: Request, res: Response, next: NextFunction) 
   }
 }
 
+/** Memverifikasi kredensial lalu mengembalikan access & refresh token. */
 export async function login(req: Request, res: Response, next: NextFunction) {
   try {
     const result = await authService.login(req.body.email, req.body.password);
@@ -20,6 +27,7 @@ export async function login(req: Request, res: Response, next: NextFunction) {
   }
 }
 
+/** Menukar refresh token lama dengan pasangan token baru (rotasi). */
 export async function refresh(req: Request, res: Response, next: NextFunction) {
   try {
     const result = await authService.refresh(req.body.refreshToken);
@@ -29,6 +37,7 @@ export async function refresh(req: Request, res: Response, next: NextFunction) {
   }
 }
 
+/** Mencabut seluruh keluarga refresh token milik pengguna. */
 export async function logout(req: Request, res: Response, next: NextFunction) {
   try {
     await authService.logout(req.body.refreshToken);
@@ -38,6 +47,7 @@ export async function logout(req: Request, res: Response, next: NextFunction) {
   }
 }
 
+/** Mengirim tautan reset password ke email (respons selalu generik). */
 export async function forgotPassword(req: Request, res: Response, next: NextFunction) {
   try {
     const result = await authService.forgotPassword(req.body.email);
@@ -47,6 +57,7 @@ export async function forgotPassword(req: Request, res: Response, next: NextFunc
   }
 }
 
+/** Menetapkan password baru menggunakan token reset yang valid. */
 export async function resetPassword(req: Request, res: Response, next: NextFunction) {
   try {
     await authService.resetPassword(req.body.token, req.body.password);
@@ -56,6 +67,7 @@ export async function resetPassword(req: Request, res: Response, next: NextFunct
   }
 }
 
+/** Mengaktifkan akun pengguna melalui token verifikasi email. */
 export async function verifyEmail(req: Request, res: Response, next: NextFunction) {
   try {
     await authService.verifyEmail(req.body.token);
@@ -65,6 +77,10 @@ export async function verifyEmail(req: Request, res: Response, next: NextFunctio
   }
 }
 
+/**
+ * Menghapus akun pengguna yang sedang login setelah konfirmasi password.
+ * Data pengguna dianonimkan, bukan dihapus dari database.
+ */
 export async function deleteAccount(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     await authService.deleteAccount(req.userId!, req.body.password);

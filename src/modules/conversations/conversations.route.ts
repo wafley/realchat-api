@@ -1,3 +1,8 @@
+/**
+ * Pemetaan rute HTTP modul percakapan ke controller-nya.
+ * Semua rute dilindungi verifyJWT; rute tulisan divalidasi skema Zod,
+ * dan rute kirim lampiran menambahkan pipeline unggah Multer.
+ */
 import { Router } from 'express';
 import { verifyJWT } from '../../middlewares/verifyJWT';
 import { validate } from '../../middlewares/validate';
@@ -6,6 +11,7 @@ import { validateMessageUpload } from '../../middlewares/imageValidation';
 import * as validator from './conversations.validator';
 import * as controller from './conversations.controller';
 
+// Router utama modul, dipasang pada prefix /conversations.
 const router = Router();
 
 router.post(
@@ -16,6 +22,8 @@ router.post(
 );
 router.get('/', verifyJWT, controller.getConversations);
 router.get('/:id/messages', verifyJWT, controller.getMessages);
+// Alur kirim lampiran: simpan berkas (Multer), validasi gambarnya,
+// lalu validasi body teks sebelum masuk controller.
 router.post(
   '/:id/messages',
   verifyJWT,
@@ -49,6 +57,8 @@ router.get('/:id', verifyJWT, controller.getConversationById);
 router.delete('/:id', verifyJWT, controller.leaveConversation);
 router.patch('/:id/clear', verifyJWT, controller.clearConversation);
 
+// Router terpisah untuk daftar pesan berbintang lintas percakapan;
+// dipasang di path root, bukan di bawah /:id.
 const starredRouter = Router();
 
 starredRouter.get('/starred', verifyJWT, controller.getStarredMessages);

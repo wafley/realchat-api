@@ -1,5 +1,10 @@
+/**
+ * Skema validasi Zod untuk endpoint pengguna: pembaruan profil, parameter
+ * ID pengguna, dan penggantian password.
+ */
 import { z } from 'zod';
 
+// Aturan username: 3-30 karakter alfanumerik atau garis bawah.
 const usernameSchema = z
   .string()
   .trim()
@@ -14,6 +19,7 @@ const safeText = (max: number) =>
     .max(max)
     .regex(/^[^\p{Cc}<>"'&]*$/u, 'Contains disallowed characters');
 
+/** Skema pembaruan profil: semua field opsional, tidak boleh field asing. */
 export const updateProfileSchema = z
   .object({
     username: usernameSchema.optional(),
@@ -25,10 +31,12 @@ export const updateProfileSchema = z
   })
   .strict();
 
+/** Skema parameter rute berisi ID pengguna dalam format UUID. */
 export const userIdSchema = z.object({
   id: z.string().uuid(),
 });
 
+/** Skema ganti password: password lama untuk konfirmasi, baru min. 6 karakter. */
 export const changePasswordSchema = z
   .object({
     oldPassword: z.string().min(1),

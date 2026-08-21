@@ -1,3 +1,7 @@
+/**
+ * Skema pesan berbintang (bookmark pribadi per pengguna).
+ * Unik per (messageId, userId) - bintang tidak terlihat oleh pengguna lain.
+ */
 import { pgTable, uuid, timestamp, unique } from 'drizzle-orm/pg-core';
 import { users } from './users';
 import { messages } from './messages';

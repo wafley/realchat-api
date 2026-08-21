@@ -1,3 +1,8 @@
+/**
+ * Lapisan akses data kontak: tambah (tunggal/massal) beserta notifikasi dalam
+ * satu transaksi, hapus, ubah nama kustom, dan pencarian daftar kontak
+ * dengan filter serta pengurutan.
+ */
 import db from '../../db/index';
 import { contacts } from '../../db/schema/contacts';
 import { users } from '../../db/schema/users';
@@ -5,6 +10,7 @@ import { notifications } from '../../db/schema/notifications';
 import { eq, and, desc, asc, inArray, ilike, or } from 'drizzle-orm';
 import type { CreateNotificationData } from '../notifications/notifications.repository';
 
+/** Kolom kontak yang dikembalikan oleh query pada file ini. */
 const contactColumns = {
   id: contacts.id,
   userId: contacts.userId,
@@ -13,6 +19,10 @@ const contactColumns = {
   createdAt: contacts.createdAt,
 };
 
+/**
+ * Menambahkan satu kontak beserta notifikasinya dalam satu transaksi agar
+ * kontak dan notifikasi selalu konsisten.
+ */
 export async function addContactAndNotify(
   userId: string,
   contactId: string,
@@ -31,6 +41,10 @@ export async function addContactAndNotify(
   });
 }
 
+/**
+ * Menambahkan banyak kontak sekaligus dalam satu transaksi: kontak yang
+ * sudah ada dilewati, dan notifikasi hanya dibuat untuk kontak baru.
+ */
 export async function addContactsBulkAndNotify(
   userId: string,
   contactIds: string[],
@@ -61,12 +75,14 @@ export async function addContactsBulkAndNotify(
   });
 }
 
+/** Menghapus relasi kontak dari sisi pemilik (userId). */
 export async function removeContact(userId: string, contactId: string) {
   await db
     .delete(contacts)
     .where(and(eq(contacts.userId, userId), eq(contacts.contactId, contactId)));
 }
 
+/** Memperbarui nama kustom kontak; null jika relasi kontak tidak ada. */
 export async function updateContactCustomName(
   userId: string,
   contactId: string,
@@ -80,6 +96,7 @@ export async function updateContactCustomName(
   return contact || null;
 }
 
+/** Mencari satu relasi kontak spesifik milik userId; null jika tidak ada. */
 export async function findContact(userId: string, contactId: string) {
   const [contact] = await db
     .select(contactColumns)
@@ -89,10 +106,16 @@ export async function findContact(userId: string, contactId: string) {
   return contact || null;
 }
 
+/**
+ * Mengambil daftar kontak lengkap dengan profil penggunanya. Mendukung
+ * pencarian (username/nama/nama kustom, case-insensitive) dan pengurutan
+ * alfabetis; default diurutkan dari kontak terbaru.
+ */
 export async function findContacts(userId: string, sort?: string, search?: string) {
   const conditions = [eq(contacts.userId, userId)];
 
   if (search) {
+    // Escape wildcard LIKE agar input pengguna tidak menjadi pola liar.
     const escaped = search.replace(/[\\%_]/g, '\\$&');
     const pattern = `%${escaped}%`;
     conditions.push(

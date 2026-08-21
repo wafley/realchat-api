@@ -1,3 +1,7 @@
+/**
+ * Barrel file skema Drizzle: menggabungkan semua definisi tabel agar bisa
+ * diimpor dari satu titik (dipakai db/index.ts dan relasi antar tabel).
+ */
 export { users } from './users';
 export { refreshTokens } from './refreshTokens';
 export { conversations } from './conversations';

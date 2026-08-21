@@ -1,5 +1,10 @@
+/**
+ * Skema validasi Zod untuk seluruh endpoint autentikasi.
+ * Dipakai middleware validate() sebelum request diteruskan ke controller.
+ */
 import { z } from 'zod';
 
+// Teks aman: tolak karakter kontrol dan karakter berbahaya untuk HTML.
 const safeText = (max: number) =>
   z
     .string()
@@ -14,6 +19,7 @@ const email = z
   .email()
   .transform((v) => v.toLowerCase());
 
+/** Skema payload registrasi: username, email, password, dan nama opsional. */
 export const registerSchema = z
   .object({
     username: z
@@ -28,6 +34,7 @@ export const registerSchema = z
   })
   .strict();
 
+/** Skema payload login: email dan password wajib diisi. */
 export const loginSchema = z
   .object({
     email,
@@ -35,18 +42,21 @@ export const loginSchema = z
   })
   .strict();
 
+/** Skema payload refresh/logout: berisi refresh token dari klien. */
 export const refreshSchema = z
   .object({
     refreshToken: z.string().min(1),
   })
   .strict();
 
+/** Skema permintaan tautan reset password berdasarkan email. */
 export const forgotPasswordSchema = z
   .object({
     email,
   })
   .strict();
 
+/** Skema reset password: token reset dan password baru (min. 6 karakter). */
 export const resetPasswordSchema = z
   .object({
     token: z.string().min(1),
@@ -54,12 +64,14 @@ export const resetPasswordSchema = z
   })
   .strict();
 
+/** Skema verifikasi email menggunakan token dari tautan email. */
 export const verifyEmailSchema = z
   .object({
     token: z.string().min(1),
   })
   .strict();
 
+/** Skema konfirmasi penghapusan akun: password wajib dikonfirmasi ulang. */
 export const deleteAccountSchema = z
   .object({
     password: z.string().min(1),

@@ -1,3 +1,7 @@
+/**
+ * Skema tabel pengguna: kredensial, profil, presence, verifikasi email,
+ * reset password, dan soft-delete (anonimisasi akun).
+ */
 import {
   pgTable,
   uuid,
@@ -15,6 +19,7 @@ export const users = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     username: varchar('username', { length: 50 }).notNull(),
+    // Cooldown ganti username (30 hari) - null berarti belum pernah ganti.
     usernameUpdatedAt: timestamp('username_updated_at', { withTimezone: true }),
     email: varchar('email', { length: 255 }).notNull(),
     passwordHash: text('password_hash').notNull(),
@@ -25,6 +30,7 @@ export const users = pgTable(
     isOnline: boolean('is_online').notNull().default(false),
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
     isVerified: boolean('is_verified').notNull().default(false),
+    // Naikkan versi ini untuk membatalkan semua access token lama (logout-all/delete).
     tokenVersion: integer('token_version').notNull().default(0),
     verificationToken: text('verification_token'),
     verificationTokenExpiresAt: timestamp('verification_token_expires_at', {
@@ -34,9 +40,11 @@ export const users = pgTable(
     resetTokenExpiresAt: timestamp('reset_token_expires_at', {
       withTimezone: true,
     }),
+    // Soft-delete: non-null berarti akun sudah dianonimasi & disembunyikan.
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
+  // Username unik secara case-insensitive (dicek via lower()).
   (table) => [uniqueIndex('users_username_lower_unique').on(sql`lower(${table.username})`)],
 );

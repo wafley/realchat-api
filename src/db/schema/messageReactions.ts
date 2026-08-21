@@ -1,3 +1,7 @@
+/**
+ * Skema reaksi emoji pada pesan; satu pengguna boleh memberi banyak emoji
+ * berbeda per pesan (unik per messageId+userId+emoji).
+ */
 import { pgTable, uuid, varchar, timestamp, unique } from 'drizzle-orm/pg-core';
 import { users } from './users';
 import { messages } from './messages';

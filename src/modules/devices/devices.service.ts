@@ -1,9 +1,19 @@
+/**
+ * Layanan logika bisnis perangkat: registrasi/penghapusan token FCM milik user
+ * dan fan-out push notification untuk pesan masuk dengan menyaring penerima
+ * yang memblokir pengirim atau sedang dalam mode mute.
+ */
 import * as repository from './devices.repository';
 import { sendPush, messagePreview } from './fcm.service';
 import { getBlockRelationUserIds } from '../users/blockedUsers.repository';
 
+// Batas jumlah token per user; token terlama akan dipangkas saat registrasi baru.
 const MAX_DEVICE_TOKENS_PER_USER = 10;
 
+/**
+ * Mendaftarkan (atau memperbarui) token FCM milik user, lalu memangkas
+ * token terlama bila melebihi batas maksimum per user.
+ */
 export async function registerDevice(
   userId: string,
   data: { token: string; platform: 'android' | 'web' },
@@ -13,15 +23,23 @@ export async function registerDevice(
   return row;
 }
 
+/** Menghapus satu token perangkat milik user (mis. saat logout). */
 export async function unregisterDevice(userId: string, token: string) {
   await repository.removeDeviceToken(userId, token);
 }
 
+/** Kandidat penerima push beserta status mute-nya. */
 export interface PushTarget {
   userId: string;
   mutedUntil: Date | null;
 }
 
+/**
+ * Mengirim push notification untuk pesan masuk ke seluruh kandidat penerima.
+ * Penerima disaring: bukan pengirim sendiri, tidak memblokir (atau diblokir
+ * oleh) pengirim, dan tidak sedang mute. Kegagalan push tidak boleh mengganggu
+ * alur utama, sehingga ditangkap dan hanya dicatat sebagai error.
+ */
 export async function sendIncomingPush(options: {
   conversationId: string;
   conversationType: string;
@@ -33,6 +51,8 @@ export async function sendIncomingPush(options: {
   targets: PushTarget[];
 }) {
   try {
+    // Saring penerima: buang pengirim, user yang saling memblokir dengan
+    // pengirim, dan user yang masih dalam masa mute (mutedUntil di masa depan).
     const blockedWithSender = new Set(await getBlockRelationUserIds(options.senderId));
     const recipients = options.targets.filter(
       (t) =>
@@ -45,6 +65,7 @@ export async function sendIncomingPush(options: {
     const tokens = await repository.findTokensByUserIds(recipients.map((r) => r.userId));
     if (tokens.length === 0) return;
 
+    // Judul push: untuk grup tampilkan "pengirim @ nama grup", untuk DM nama pengirim.
     const isGroup = options.conversationType === 'GROUP';
     const title = isGroup
       ? `${options.senderName} @ ${options.conversationName || 'Group'}`
