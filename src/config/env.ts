@@ -1,3 +1,8 @@
+/**
+ * Validasi & normalisasi environment variables dengan zod.
+ * Aplikasi gagal-fast (exit 1) bila ada variabel tidak valid, termasuk
+ * aturan khusus: SMTP wajib di produksi dan kedua secret JWT harus berbeda.
+ */
 import 'dotenv/config';
 import { z } from 'zod';
 
@@ -53,6 +58,7 @@ if (!parsed.success) {
   process.exit(1);
 }
 
+/** Objek konfigurasi final yang dipakai seluruh modul (hasil parse & validasi env). */
 export const env = {
   port: parsed.data.PORT,
   nodeEnv: parsed.data.NODE_ENV,

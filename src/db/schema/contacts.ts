@@ -1,3 +1,7 @@
+/**
+ * Skema kontak (daftar teman): userId menyimpan contactId sebagai kenalan.
+ * customName memungkinkan pengguna menamai ulang kontak secara privat.
+ */
 import { pgTable, uuid, text, timestamp, unique, index } from 'drizzle-orm/pg-core';
 import { users } from './users';
 

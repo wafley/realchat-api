@@ -1,3 +1,8 @@
+/**
+ * Skema relasi blokir antar pengguna (blockerId memblokir blockedId).
+ * Blokir bersifat simetris di lapisan service: DM, presence, kontak,
+ * search, dan push sama-sama difilter untuk kedua arah.
+ */
 import { pgTable, uuid, timestamp, unique } from 'drizzle-orm/pg-core';
 import { users } from './users';
 

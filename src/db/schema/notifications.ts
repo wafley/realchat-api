@@ -1,3 +1,7 @@
+/**
+ * Skema notifikasi in-app per pengguna (mention, invite grup, pesan masuk, dll).
+ * actorId = pengguna penyebab notifikasi; boleh null untuk notifikasi sistem.
+ */
 import { pgTable, uuid, varchar, text, boolean, timestamp, index } from 'drizzle-orm/pg-core';
 import { users } from './users';
 import { conversations } from './conversations';
