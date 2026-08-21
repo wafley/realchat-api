@@ -50,6 +50,10 @@ export const users = pgTable(
       .default('EVERYONE'),
     // Privasi: siapa boleh menambahkan pengguna ini ke grup (nilai sama di atas).
     groupInvitePolicy: varchar('group_invite_policy', { length: 10 }).notNull().default('EVERYONE'),
+    // Preferensi notifikasi: push FCM untuk pesan masuk (default aktif).
+    notifyNewMessages: boolean('notify_new_messages').notNull().default(true),
+    // Preferensi notifikasi: notifikasi undangan grup; invite sendiri tetap jalan.
+    notifyGroupInvites: boolean('notify_group_invites').notNull().default(true),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
