@@ -92,3 +92,23 @@ export async function getBlockedUsers(req: AuthRequest, res: Response, next: Nex
     next(error);
   }
 }
+
+/** Mengembalikan pengaturan privasi pengguna yang sedang login. */
+export async function getPrivacy(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const result = await userService.getPrivacySettings(req.userId!);
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/** Memperbarui pengaturan privasi (last seen & kebijakan undangan grup). */
+export async function updatePrivacy(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const result = await userService.updatePrivacySettings(req.userId!, req.body);
+    res.status(200).json({ success: true, message: 'Privacy settings updated', data: result });
+  } catch (error) {
+    next(error);
+  }
+}

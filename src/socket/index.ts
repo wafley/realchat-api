@@ -9,6 +9,7 @@ import jwt from 'jsonwebtoken';
 import { env } from '../config/env';
 import db from '../db/index';
 import { users } from '../db/schema/users';
+import { contacts } from '../db/schema/contacts';
 import { conversationMembers } from '../db/schema/conversationMembers';
 import { eq, and, ne, inArray } from 'drizzle-orm';
 import { onlineUsers } from './onlineUsers';
@@ -30,7 +31,8 @@ export function getIO(): Server {
 /**
  * Menyebarkan event presence (online/offline) ke semua anggota percakapan
  * milik user. Penerima yang memiliki relasi blokir dua arah dengan user
- * disaring agar tidak saling menerima status presence.
+ * disaring, demikian juga penerima yang tidak berhak melihat kehadiran
+ * berdasarkan kebijakan privasi (lastSeenVisibility) si penyiar.
  */
 async function broadcastPresence(
   server: Server,
@@ -52,10 +54,34 @@ async function broadcastPresence(
       );
     // Saring penerima yang saling memblokir dengan user terkait.
     const blockedIds = await blockedRepository.getBlockRelationUserIds(userId);
-    const recipients = new Set<string>();
+    const candidates = new Set<string>();
     for (const row of memberRows) {
-      if (!blockedIds.has(row.userId)) recipients.add(row.userId);
+      if (!blockedIds.has(row.userId)) candidates.add(row.userId);
     }
+
+    // Kebijakan privasi penyiar menentukan penerima akhir.
+    const [broadcaster] = await db
+      .select({ lastSeenVisibility: users.lastSeenVisibility })
+      .from(users)
+      .where(eq(users.id, userId));
+    const visibility = broadcaster?.lastSeenVisibility ?? 'EVERYONE';
+
+    let recipients = candidates;
+    if (visibility === 'NOBODY') {
+      recipients = new Set();
+    } else if (visibility === 'CONTACTS') {
+      // Hanya penerima yang tersimpan sebagai kontak milik penyiar.
+      if (candidates.size > 0) {
+        const rows = await db
+          .select({ contactId: contacts.contactId })
+          .from(contacts)
+          .where(and(eq(contacts.userId, userId), inArray(contacts.contactId, [...candidates])));
+        recipients = new Set(rows.map((r) => r.contactId));
+      } else {
+        recipients = new Set();
+      }
+    }
+
     for (const id of recipients) {
       server.to(`user:${id}`).emit(event, { userId, ...payload });
     }

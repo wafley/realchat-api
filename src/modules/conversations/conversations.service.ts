@@ -7,6 +7,8 @@
 import * as repository from './conversations.repository';
 import * as groupService from '../groups/groups.service';
 import { findUserById } from '../auth/auth.repository';
+import { findPresenceTargets } from '../users/users.repository';
+import { filterVisiblePresenceIds } from '../users/presencePrivacy';
 import { NotFoundError, BadRequestError, ForbiddenError, AppError } from '../../utils/errors';
 import { toSender } from '../../utils/sender';
 import { getIO } from '../../socket/index';
@@ -231,12 +233,21 @@ export async function getConversations(
   const hasMore = rows.length > limit;
   const page = hasMore ? rows.slice(0, limit) : rows;
 
-  // Kehadiran (online/lastSeen) disembunyikan bila saling memblokir.
+  // Kehadiran (online/lastSeen) disembunyikan bila saling memblokir
+  // atau kebijakan privasi peer tidak mengizinkan.
   const blockedIds = await getBlockRelationUserIds(userId);
+
+  // Kumpulkan peer DM pada halaman ini lalu cek kebijakan privasinya sekaligus.
+  const peerIds = [
+    ...new Set(page.filter((r) => r.type === 'PRIVATE' && r.peerId).map((r) => r.peerId!)),
+  ];
+  const targetMap = new Map((await findPresenceTargets(peerIds)).map((t) => [t.id, t]));
+  const visibleIds = await filterVisiblePresenceIds(userId, targetMap);
 
   const conversations = page.map((row) => {
     const isPrivate = row.type === 'PRIVATE';
-    const presenceHidden = isPrivate && row.peerId ? blockedIds.has(row.peerId) : false;
+    const presenceHidden =
+      isPrivate && row.peerId ? blockedIds.has(row.peerId) || !visibleIds.has(row.peerId) : false;
 
     const displayName = isPrivate
       ? row.customName || row.peerFullName || row.peerUsername || 'Unknown'
@@ -315,20 +326,37 @@ export async function getConversationDetail(userId: string, conversationId: stri
   const me = members.find((m) => m.userId === userId);
   const blockedIds = await getBlockRelationUserIds(userId);
 
+  // Kebijakan privasi kehadiran anggota lain dicek sekaligus (satu query).
+  const otherIds = [...new Set(members.map((m) => m.userId).filter((id) => id !== userId))];
+  const targetMap = new Map((await findPresenceTargets(otherIds)).map((t) => [t.id, t]));
+  const visibleIds = await filterVisiblePresenceIds(userId, targetMap);
+
   return {
     ...conversation,
     mutedUntil: me?.mutedUntil ?? null,
     clearedAt: me?.clearedAt ?? null,
     members: members.map(
-      ({ username, fullName, avatarUrl, isOnline, lastSeenAt, id, userId, role, joinedAt }) => {
-        const presenceHidden = blockedIds.has(userId);
+      ({
+        username,
+        fullName,
+        avatarUrl,
+        isOnline,
+        lastSeenAt,
+        id,
+        userId: memberId,
+        role,
+        joinedAt,
+      }) => {
+        // Blokir selalu menang; di luar itu ikut kebijakan privasi anggota.
+        const presenceHidden =
+          blockedIds.has(memberId) || (memberId !== userId && !visibleIds.has(memberId));
         return {
           id,
-          userId,
+          userId: memberId,
           role,
           joinedAt,
           user: {
-            id: userId,
+            id: memberId,
             username,
             fullName,
             avatarUrl,

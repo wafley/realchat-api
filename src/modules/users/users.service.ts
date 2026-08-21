@@ -14,6 +14,7 @@ import { conversationMembers } from '../../db/schema/conversationMembers';
 import { conversations } from '../../db/schema/conversations';
 import { eq, and, or, ne, inArray } from 'drizzle-orm';
 import { getIO } from '../../socket/index';
+import { canSeePresence } from './presencePrivacy';
 import { unlinkQuietly } from '../../utils/cleanup';
 import { env } from '../../config/env';
 import path from 'path';
@@ -91,7 +92,6 @@ async function emitProfileUpdate(
 export async function getProfile(userId: string) {
   const user = await findUserById(userId);
   if (!user) throw new NotFoundError('User not found');
-
   return {
     id: user.id,
     username: user.username,
@@ -105,6 +105,29 @@ export async function getProfile(userId: string) {
     isVerified: user.isVerified,
     createdAt: user.createdAt,
   };
+}
+
+/**
+ * Mengambil pengaturan privasi milik pengguna yang sedang login.
+ * @throws NotFoundError jika pengguna tidak ditemukan
+ */
+export async function getPrivacySettings(userId: string) {
+  const settings = await repository.findPrivacySettings(userId);
+  if (!settings) throw new NotFoundError('User not found');
+  return settings;
+}
+
+/**
+ * Memperbarui sebagian atau seluruh pengaturan privasi milik sendiri.
+ * @throws NotFoundError jika pengguna tidak ditemukan
+ */
+export async function updatePrivacySettings(
+  userId: string,
+  data: { lastSeenVisibility?: string; groupInvitePolicy?: string },
+) {
+  const updated = await repository.updatePrivacySettings(userId, data);
+  if (!updated) throw new NotFoundError('User not found');
+  return updated;
 }
 
 /** Jeda minimum (hari) antar penggantian username untuk mencegah penyalahgunaan. */
@@ -149,8 +172,9 @@ export async function updateProfile(
 }
 
 /**
- * Mengambil profil publik pengguna lain. Jika ada relasi blokir dua arah,
- * kehadiran (isOnline/lastSeenAt) disembunyikan dari penampil.
+ * Mengambil profil publik pengguna lain. Kehadiran (isOnline/lastSeenAt)
+ * disembunyikan bila ada relasi blokir dua arah ATAU kebijakan privasi
+ * target tidak mengizinkan viewer melihatnya.
  * @throws NotFoundError jika pengguna tidak ada atau sudah dihapus
  */
 export async function getUserById(viewerId: string, targetId: string) {
@@ -158,8 +182,11 @@ export async function getUserById(viewerId: string, targetId: string) {
   // Guard deletedAt: akun yang sudah dihapus diperlakukan tidak ada.
   if (!user || user.deletedAt) throw new NotFoundError('User not found');
 
-  const presenceHidden =
-    viewerId !== targetId && (await blockedRepository.hasBlockRelation(viewerId, targetId));
+  let presenceHidden = false;
+  if (viewerId !== targetId) {
+    const blocked = await blockedRepository.hasBlockRelation(viewerId, targetId);
+    presenceHidden = blocked || !(await canSeePresence(viewerId, user));
+  }
 
   return {
     id: user.id,
@@ -248,5 +275,11 @@ export async function unblockUser(userId: string, targetId: string) {
 
 /** Mengembalikan daftar pengguna yang diblokir oleh pengguna tersebut. */
 export async function getBlockedUsers(userId: string) {
-  return blockedRepository.listBlocked(userId);
+  const rows = await blockedRepository.listBlocked(userId);
+  // Blokir selalu menyembunyikan kehadiran, termasuk di daftar blokir.
+  return rows.map(({ isOnline: _isOnline, lastSeenAt: _lastSeenAt, ...rest }) => ({
+    ...rest,
+    isOnline: null,
+    lastSeenAt: null,
+  }));
 }

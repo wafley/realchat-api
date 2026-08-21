@@ -43,3 +43,17 @@ export const changePasswordSchema = z
     newPassword: z.string().min(6).max(128),
   })
   .strict();
+
+/** Nilai visibilitas privasi yang valid untuk kedua toggle pengaturan. */
+export const privacyVisibilitySchema = z.enum(['EVERYONE', 'CONTACTS', 'NOBODY']);
+
+/**
+ * Skema pembaruan pengaturan privasi: kedua field opsional agar bisa
+ * diubah parsial; field asing ditolak.
+ */
+export const updatePrivacySchema = z
+  .object({
+    lastSeenVisibility: privacyVisibilitySchema.optional(),
+    groupInvitePolicy: privacyVisibilitySchema.optional(),
+  })
+  .strict();

@@ -8,6 +8,8 @@ import { findUserById, findUserByUsername, findUsersByIds } from '../auth/auth.r
 import { NotFoundError, ConflictError, BadRequestError, ForbiddenError } from '../../utils/errors';
 import { getIO } from '../../socket/index';
 import { hasBlockRelation, getBlockRelationUserIds } from '../users/blockedUsers.repository';
+import { findPresenceTargets } from '../users/users.repository';
+import { filterVisiblePresenceIds } from '../users/presencePrivacy';
 import type { CreateNotificationData } from '../notifications/notifications.repository';
 
 /** Data ringkas aktor (pemilik kontak) untuk isi notifikasi dan event socket. */
@@ -137,16 +139,27 @@ export async function addContactsBulk(myId: string, targetUserIds: string[]) {
 
 /**
  * Mengambil daftar kontak milik pengguna. Kehadiran (isOnline/lastSeenAt)
- * disembunyikan untuk kontak yang berrelasi blokir.
+ * disembunyikan untuk kontak yang berrelasi blokir atau yang kebijakan
+ * privasinya tidak mengizinkan pengguna melihat.
  */
 export async function getMyContacts(userId: string, sort?: string, search?: string) {
   const rows = await repository.findContacts(userId, sort, search);
   const blockedIds = new Set(await getBlockRelationUserIds(userId));
-  return rows.map((row) => ({
-    ...row,
-    isOnline: blockedIds.has(row.id) ? null : row.isOnline,
-    lastSeenAt: blockedIds.has(row.id) ? null : row.lastSeenAt,
-  }));
+
+  // Kebijakan privasi semua kontak dicek sekaligus (satu query).
+  const targetMap = new Map(
+    (await findPresenceTargets(rows.map((r) => r.id))).map((t) => [t.id, t]),
+  );
+  const visibleIds = await filterVisiblePresenceIds(userId, targetMap);
+
+  return rows.map((row) => {
+    const presenceHidden = blockedIds.has(row.id) || !visibleIds.has(row.id);
+    return {
+      ...row,
+      isOnline: presenceHidden ? null : row.isOnline,
+      lastSeenAt: presenceHidden ? null : row.lastSeenAt,
+    };
+  });
 }
 
 /**

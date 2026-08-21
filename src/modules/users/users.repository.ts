@@ -5,7 +5,7 @@
 import db from '../../db/index';
 import { users } from '../../db/schema/users';
 import { refreshTokens } from '../../db/schema/refreshTokens';
-import { eq, sql } from 'drizzle-orm';
+import { eq, sql, inArray } from 'drizzle-orm';
 
 /** Daftar kolom pengguna yang aman untuk dikirim ke klien (tanpa hash password). */
 export const publicUserColumns = {
@@ -50,6 +50,49 @@ export async function updateAvatar(userId: string, avatarUrl: string) {
     .where(eq(users.id, userId))
     .returning(publicUserColumns);
   return user || null;
+}
+
+/** Mengambil pengaturan privasi pengguna; null jika pengguna tidak ada. */
+export async function findPrivacySettings(userId: string) {
+  const [row] = await db
+    .select({
+      lastSeenVisibility: users.lastSeenVisibility,
+      groupInvitePolicy: users.groupInvitePolicy,
+    })
+    .from(users)
+    .where(eq(users.id, userId));
+  return row || null;
+}
+
+/**
+ * Mengambil setting visibilitas last seen banyak pengguna sekaligus
+ * (satu query) untuk penyaringan kehadiran pada daftar.
+ */
+export async function findPresenceTargets(userIds: string[]) {
+  if (userIds.length === 0) return [];
+  return db
+    .select({ id: users.id, lastSeenVisibility: users.lastSeenVisibility })
+    .from(users)
+    .where(inArray(users.id, userIds));
+}
+
+/**
+ * Memperbarui sebagian pengaturan privasi dan mengembalikan nilai terbaru.
+ * Hanya field yang dikirim yang berubah.
+ */
+export async function updatePrivacySettings(
+  userId: string,
+  data: { lastSeenVisibility?: string; groupInvitePolicy?: string },
+) {
+  const [row] = await db
+    .update(users)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(users.id, userId))
+    .returning({
+      lastSeenVisibility: users.lastSeenVisibility,
+      groupInvitePolicy: users.groupInvitePolicy,
+    });
+  return row || null;
 }
 
 /**
