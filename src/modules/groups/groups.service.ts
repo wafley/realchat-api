@@ -5,6 +5,7 @@
  */
 import * as repository from './groups.repository';
 import { findUserById } from '../auth/auth.repository';
+import * as contactsRepository from '../contacts/contacts.repository';
 import {
   findConversationById,
   findMembersByConversationId,
@@ -31,6 +32,35 @@ import path from 'path';
 // Nama tampilan dengan fallback: fullName -> username -> 'Unknown'.
 function displayName(user: { fullName?: string | null; username?: string } | null | undefined) {
   return user?.fullName || user?.username || 'Unknown';
+}
+
+/**
+ * Memvalidasi kebijakan groupInvitePolicy setiap calon anggota terhadap
+ * aktor. NOBODY selalu menolak; CONTACTS menolak bila aktor tidak tersimpan
+ * sebagai kontak milik calon anggota.
+ * @throws BadRequestError menyebut username yang menolak ditambahkan
+ */
+async function assertInviteAllowed(
+  actorId: string,
+  candidates: Array<{ id: string; username: string; groupInvitePolicy: string }>,
+) {
+  const rejected: string[] = [];
+  for (const candidate of candidates) {
+    if (candidate.id === actorId) continue;
+    if (candidate.groupInvitePolicy === 'NOBODY') {
+      rejected.push(`@${candidate.username}`);
+      continue;
+    }
+    if (candidate.groupInvitePolicy === 'CONTACTS') {
+      const contact = await contactsRepository.findContact(candidate.id, actorId);
+      if (!contact) rejected.push(`@${candidate.username}`);
+    }
+  }
+  if (rejected.length > 0) {
+    throw new BadRequestError(
+      `${rejected.join(', ')} only allows their contacts to add them to groups`,
+    );
+  }
 }
 
 /**
@@ -115,11 +145,16 @@ export async function createGroup(
     throw new BadRequestError(`Group cannot have more than ${MAX_GROUP_MEMBERS} members`);
 
   // Pastikan setiap calon anggota ada dan sudah terverifikasi.
+  const candidateUsers: Awaited<ReturnType<typeof findUserById>>[] = [];
   for (const id of allIds) {
     const user = await findUserById(id);
     if (!user) throw new NotFoundError(`User ${id} not found`);
     if (!user.isVerified) throw new BadRequestError('All group members must be verified');
+    candidateUsers.push(user);
   }
+
+  // Hormati kebijakan privasi calon anggota soal ditambahkan ke grup.
+  await assertInviteAllowed(userId, candidateUsers);
 
   // Grup + anggota dibuat atomik agar tak ada grup tanpa anggota.
   const conversation = await createGroupAtomically(
@@ -237,6 +272,9 @@ export async function addMembers(userId: string, groupId: string, userIds: strin
     if (!user.isVerified) throw new BadRequestError('All group members must be verified');
     newUsers.push(user);
   }
+
+  // Hormati kebijakan privasi calon anggota soal ditambahkan ke grup.
+  await assertInviteAllowed(userId, newUsers);
 
   // Penambahan aktual di repository (advisory lock + cek kuota); hasil
   // bisa lebih sedikit bila ada penambahan paralel.
