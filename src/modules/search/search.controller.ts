@@ -1,8 +1,14 @@
+/**
+ * Handler HTTP untuk endpoint pencarian (user, grup, pesan, pesan DM).
+ * Memvalidasi query dengan skema Zod, memanggil service terkait, lalu
+ * merespons JSON; error diteruskan ke middleware penanganan error.
+ */
 import { Response, NextFunction } from 'express';
 import { AuthRequest } from '../../middlewares/verifyJWT';
 import * as searchService from './search.service';
 import { searchQuerySchema, messageSearchQuerySchema } from './search.validator';
 
+/** GET /search/users — cari user berdasarkan username atau nama lengkap. */
 export async function searchUsers(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const { q, limit } = searchQuerySchema.parse(req.query);
@@ -13,6 +19,7 @@ export async function searchUsers(req: AuthRequest, res: Response, next: NextFun
   }
 }
 
+/** GET /search/groups — cari grup yang diikuti user berdasarkan nama. */
 export async function searchGroups(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const { q, cursor, limit } = searchQuerySchema.parse(req.query);
@@ -23,6 +30,10 @@ export async function searchGroups(req: AuthRequest, res: Response, next: NextFu
   }
 }
 
+/**
+ * GET /search/messages — cari pesan; opsional terbatas pada satu percakapan
+ * dengan filter rentang waktu (before/after) dan cursor pagination.
+ */
 export async function searchMessages(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const { q, conversationId, before, after, cursor, limit } = messageSearchQuerySchema.parse(
@@ -42,6 +53,7 @@ export async function searchMessages(req: AuthRequest, res: Response, next: Next
   }
 }
 
+/** GET /conversations/dm/search — cari pesan di semua percakapan DM user. */
 export async function searchDmMessages(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const { q, cursor, limit } = searchQuerySchema.parse(req.query);

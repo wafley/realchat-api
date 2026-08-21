@@ -1,12 +1,24 @@
+/**
+ * Layanan logika bisnis pencarian: user, grup, dan pesan. Menangani otorisasi
+ * keanggotaan percakapan, paginasi berbasis cursor (fetch limit+1 untuk deteksi
+ * halaman berikutnya), dan pembentukan struktur respons yang siap dikirim.
+ */
 import * as repository from './search.repository';
 import { ForbiddenError } from '../../utils/errors';
 
+/** Mencari user berdasarkan kata kunci, mengabaikan diri sendiri. */
 export async function searchUsers(currentUserId: string, q: string, limit = 50) {
   return repository.searchUsers(currentUserId, q, limit);
 }
 
+/**
+ * Mencari grup yang diikuti user berdasarkan nama, dengan paginasi cursor
+ * (createdAt menurun). Mengambil limit+1 baris untuk mendeteksi halaman
+ * berikutnya; cursor berikutnya adalah createdAt item terakhir.
+ */
 export async function searchGroups(currentUserId: string, q: string, cursor?: string, limit = 50) {
   const rows = await repository.searchGroups(currentUserId, q, cursor, limit);
+  // Baris ke-limit+1 hanya penanda hasMore; buang sebelum dikirim ke client.
   const hasMore = rows.length > limit;
   const groups = hasMore ? rows.slice(0, limit) : rows;
 
@@ -19,6 +31,12 @@ export async function searchGroups(currentUserId: string, q: string, cursor?: st
   };
 }
 
+/**
+ * Mencari pesan berdasarkan kata kunci. Tanpa conversationId berarti mencari
+ * di semua percakapan yang diikuti user (yang tidak disembunyikan); dengan
+ * conversationId, user wajib menjadi anggota percakapan tersebut.
+ * @throws ForbiddenError jika user bukan anggota percakapan yang diminta.
+ */
 export async function searchMessages(
   userId: string,
   options: {
@@ -32,6 +50,7 @@ export async function searchMessages(
 ) {
   const { conversationId, q, before, after, cursor, limit = 50 } = options;
 
+  // Pencarian terbatas pada satu percakapan: pastikan user anggotanya dulu.
   if (conversationId) {
     const isMember = await repository.isConversationMember(conversationId, userId);
     if (!isMember) throw new ForbiddenError('You are not a member of this conversation');
@@ -45,6 +64,7 @@ export async function searchMessages(
     cursor,
     limit,
   });
+  // Pola paginasi cursor yang sama: ambil limit+1, sisanya jadi nextCursor.
   const hasMore = rows.length > limit;
   const messages = hasMore ? rows.slice(0, limit) : rows;
 
@@ -61,6 +81,11 @@ export async function searchMessages(
   };
 }
 
+/**
+ * Mencari pesan di semua percakapan pribadi (DM) milik user, dengan paginasi
+ * cursor berbasis createdAt. Nama lawan bicara difallback ke username bila
+ * nama lengkap tidak tersedia.
+ */
 export async function searchDmMessages(userId: string, q: string, cursor?: string, limit = 50) {
   const rows = await repository.searchDmMessages(userId, q, cursor, limit);
   const hasMore = rows.length > limit;

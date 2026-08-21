@@ -1,3 +1,7 @@
+/**
+ * Definisi rute perangkat (dipasang di bawah prefix /devices): registrasi dan
+ * penghapusan token FCM. Keduanya butuh login (verifyJWT) dan validasi body.
+ */
 import { Router } from 'express';
 import { verifyJWT } from '../../middlewares/verifyJWT';
 import { validate } from '../../middlewares/validate';
@@ -14,4 +18,5 @@ router.delete(
   controller.unregisterDevice,
 );
 
+/** Router Express berisi endpoint registrasi dan penghapusan perangkat. */
 export default router;
