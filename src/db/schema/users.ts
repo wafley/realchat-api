@@ -47,9 +47,7 @@ export const users = pgTable(
       .notNull()
       .default('EVERYONE'),
     // Privasi: siapa boleh menambahkan pengguna ini ke grup (nilai sama di atas).
-    groupInvitePolicy: varchar('group_invite_policy', { length: 10 })
-      .notNull()
-      .default('EVERYONE'),
+    groupInvitePolicy: varchar('group_invite_policy', { length: 10 }).notNull().default('EVERYONE'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
