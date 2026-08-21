@@ -1,7 +1,14 @@
 import db from '../../db/index';
 import { users } from '../../db/schema/users';
 import { refreshTokens } from '../../db/schema/refreshTokens';
-import { eq, and, gt, inArray, isNull, sql } from 'drizzle-orm';
+import { conversationMembers } from '../../db/schema/conversationMembers';
+import { contacts } from '../../db/schema/contacts';
+import { blockedUsers } from '../../db/schema/blockedUsers';
+import { messageStars } from '../../db/schema/messageStars';
+import { messageReactions } from '../../db/schema/messageReactions';
+import { deviceTokens } from '../../db/schema/deviceTokens';
+import { notifications } from '../../db/schema/notifications';
+import { eq, or, and, gt, inArray, isNull, sql } from 'drizzle-orm';
 
 export async function createUser(data: {
   username: string;
@@ -187,4 +194,56 @@ export async function deleteUserRefreshTokens(userId: string) {
     .update(refreshTokens)
     .set({ revokedAt: new Date() })
     .where(and(eq(refreshTokens.userId, userId), isNull(refreshTokens.revokedAt)));
+}
+
+export async function findUserConversationIds(userId: string) {
+  return (
+    await db
+      .select({ conversationId: conversationMembers.conversationId })
+      .from(conversationMembers)
+      .where(eq(conversationMembers.userId, userId))
+  ).map((row) => row.conversationId);
+}
+
+export async function anonymizeUser(
+  userId: string,
+  data: { username: string; email: string; passwordHash: string },
+) {
+  return db.transaction(async (tx) => {
+    await tx
+      .delete(contacts)
+      .where(or(eq(contacts.userId, userId), eq(contacts.contactId, userId)));
+    await tx
+      .delete(blockedUsers)
+      .where(or(eq(blockedUsers.blockerId, userId), eq(blockedUsers.blockedId, userId)));
+    await tx.delete(messageStars).where(eq(messageStars.userId, userId));
+    await tx.delete(messageReactions).where(eq(messageReactions.userId, userId));
+    await tx.delete(deviceTokens).where(eq(deviceTokens.userId, userId));
+    await tx.delete(notifications).where(eq(notifications.userId, userId));
+
+    const [user] = await tx
+      .update(users)
+      .set({
+        username: data.username,
+        email: data.email,
+        passwordHash: data.passwordHash,
+        fullName: null,
+        bio: null,
+        statusText: null,
+        avatarUrl: null,
+        isOnline: false,
+        lastSeenAt: new Date(),
+        isVerified: true,
+        tokenVersion: sql`${users.tokenVersion} + 1`,
+        resetToken: null,
+        resetTokenExpiresAt: null,
+        verificationToken: null,
+        verificationTokenExpiresAt: null,
+        deletedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, userId))
+      .returning({ id: users.id });
+    return user || null;
+  });
 }

@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { AuthRequest } from '../../middlewares/verifyJWT';
 import * as authService from './auth.service';
 
 export async function register(req: Request, res: Response, next: NextFunction) {
@@ -59,6 +60,15 @@ export async function verifyEmail(req: Request, res: Response, next: NextFunctio
   try {
     await authService.verifyEmail(req.body.token);
     res.status(200).json({ success: true, message: 'Email verified successfully' });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function deleteAccount(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    await authService.deleteAccount(req.userId!, req.body.password);
+    res.status(200).json({ success: true, message: 'Account deleted successfully' });
   } catch (error) {
     next(error);
   }
