@@ -31,6 +31,7 @@ async function emitProfileUpdate(
     fullName: string | null;
     bio: string | null;
     avatarUrl: string | null;
+    bannerUrl: string | null;
     statusText: string | null;
   },
 ) {
@@ -78,6 +79,7 @@ async function emitProfileUpdate(
     username: updated.username,
     fullName: updated.fullName,
     avatarUrl: updated.avatarUrl,
+    bannerUrl: updated.bannerUrl,
     bio: updated.bio,
     statusText: updated.statusText,
   };
@@ -99,6 +101,7 @@ export async function getProfile(userId: string) {
     fullName: user.fullName,
     bio: user.bio,
     avatarUrl: user.avatarUrl,
+    bannerUrl: user.bannerUrl,
     statusText: user.statusText,
     isOnline: user.isOnline,
     lastSeenAt: user.lastSeenAt,
@@ -193,6 +196,7 @@ export async function getUserById(viewerId: string, targetId: string) {
     username: user.username,
     fullName: user.fullName,
     avatarUrl: user.avatarUrl,
+    bannerUrl: user.bannerUrl,
     statusText: user.statusText,
     isOnline: presenceHidden ? null : user.isOnline,
     lastSeenAt: presenceHidden ? null : user.lastSeenAt,
@@ -213,6 +217,30 @@ export async function updateAvatar(userId: string, file: Express.Multer.File) {
 
   if (user.avatarUrl) {
     const filename = user.avatarUrl.split('/').pop();
+    if (filename) {
+      await unlinkQuietly(path.join(env.uploadDir, filename));
+    }
+  }
+
+  await emitProfileUpdate(userId, updated);
+  return updated;
+}
+
+/**
+ * Mengganti banner profil: pola sama dengan avatar - simpan URL baru,
+ * hapus berkas lama dari disk, lalu siarkan perubahan ke kontak/grup.
+ * @throws NotFoundError jika pengguna tidak ditemukan
+ */
+export async function updateBanner(userId: string, file: Express.Multer.File) {
+  const user = await findUserById(userId);
+  if (!user) throw new NotFoundError('User not found');
+
+  const bannerUrl = `/uploads/${file.filename}`;
+  const updated = await repository.updateBanner(userId, bannerUrl);
+
+  // Berkas banner lama dihapus setelah DB berhasil diperbarui.
+  if (user.bannerUrl) {
+    const filename = user.bannerUrl.split('/').pop();
     if (filename) {
       await unlinkQuietly(path.join(env.uploadDir, filename));
     }

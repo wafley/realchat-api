@@ -12,6 +12,7 @@ import {
   ALLOWED_IMAGE_TYPES,
   ALLOWED_MESSAGE_TYPES,
   MAX_AVATAR_SIZE,
+  MAX_BANNER_SIZE,
   MAX_GROUP_PHOTO_SIZE,
 } from '../config/constants';
 import { BadRequestError } from '../utils/errors';
@@ -57,6 +58,13 @@ function createUpload(maxSize: number, allowedTypes: readonly string[], rejectMe
 /** Middleware upload avatar pengguna (hanya gambar JPEG/PNG/WebP). */
 export const uploadAvatar = createUpload(
   MAX_AVATAR_SIZE,
+  ALLOWED_IMAGE_TYPES,
+  'Only JPEG, PNG, and WebP images are allowed',
+);
+
+/** Middleware upload banner profil pengguna (hanya gambar JPEG/PNG/WebP). */
+export const uploadBanner = createUpload(
+  MAX_BANNER_SIZE,
   ALLOWED_IMAGE_TYPES,
   'Only JPEG, PNG, and WebP images are allowed',
 );

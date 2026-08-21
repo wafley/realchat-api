@@ -12,6 +12,9 @@ export const MAX_GROUP_MEMBERS = 50;
 /** Ukuran maksimal file avatar pengguna (2 MB). */
 export const MAX_AVATAR_SIZE = 2 * 1024 * 1024; // 2 MB
 
+/** Ukuran maksimal banner profil pengguna (5 MB, gambar lebar). */
+export const MAX_BANNER_SIZE = 5 * 1024 * 1024; // 5 MB
+
 /** Ukuran maksimal foto profil grup (5 MB). */
 export const MAX_GROUP_PHOTO_SIZE = 5 * 1024 * 1024; // 5 MB
 

@@ -247,7 +247,8 @@ export async function verifyEmail(token: string) {
 /**
  * Menghapus akun: keluar dari semua percakapan, lalu menganonimkan identitas
  * (username/email acak, password acak, deletedAt diisi) agar riwayat pesan
- * tetap konsisten tanpa membuka data pribadi. Avatar fisik ikut dihapus.
+ * tetap konsisten tanpa membuka data pribadi. Avatar dan banner fisik ikut
+ * dihapus dari disk.
  * @throws NotFoundError jika pengguna tidak ada atau sudah dihapus
  * @throws ForbiddenError jika password konfirmasi salah
  */
@@ -280,6 +281,14 @@ export async function deleteAccount(userId: string, password: string) {
 
   if (user.avatarUrl) {
     const filename = user.avatarUrl.split('/').pop();
+    if (filename) {
+      await unlinkQuietly(path.join(env.uploadDir, filename));
+    }
+  }
+
+  // Berkas banner juga dihapus agar tidak menjadi file yatim.
+  if (user.bannerUrl) {
+    const filename = user.bannerUrl.split('/').pop();
     if (filename) {
       await unlinkQuietly(path.join(env.uploadDir, filename));
     }

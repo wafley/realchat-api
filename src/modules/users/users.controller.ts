@@ -51,6 +51,17 @@ export async function uploadAvatar(req: AuthRequest, res: Response, next: NextFu
   }
 }
 
+/** Mengunggah dan memperbarui banner profil pengguna yang sedang login. */
+export async function uploadBanner(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    if (!req.file) throw new BadRequestError('No file uploaded');
+    const result = await userService.updateBanner(req.userId!, req.file);
+    res.status(200).json({ success: true, message: 'Banner updated', data: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
 /** Mengganti password setelah memverifikasi password lama. */
 export async function changePassword(req: AuthRequest, res: Response, next: NextFunction) {
   try {
