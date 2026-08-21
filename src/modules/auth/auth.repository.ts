@@ -285,6 +285,7 @@ export async function anonymizeUser(
         bio: null,
         statusText: null,
         avatarUrl: null,
+        bannerUrl: null,
         isOnline: false,
         lastSeenAt: new Date(),
         isVerified: true,
