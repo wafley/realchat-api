@@ -26,6 +26,8 @@ export const users = pgTable(
     bio: text('bio'),
     fullName: varchar('full_name', { length: 100 }),
     avatarUrl: text('avatar_url'),
+    // Banner profil (gambar lebar di atas halaman profil); null = belum diatur.
+    bannerUrl: text('banner_url'),
     statusText: varchar('status_text', { length: 100 }).default('Hey there!'),
     isOnline: boolean('is_online').notNull().default(false),
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
