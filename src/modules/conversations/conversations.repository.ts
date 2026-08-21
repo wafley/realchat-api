@@ -1,3 +1,8 @@
+/**
+ * Lapisan akses data modul percakapan: query Drizzle untuk tabel
+ * percakapan, anggota, pesan, status, bintang, dan reaksi. Memuat
+ * operasi transaksional ber-advisory-lock agar aman dari race condition.
+ */
 import db from '../../db/index';
 import { BadRequestError, NotFoundError } from '../../utils/errors';
 import { conversations } from '../../db/schema/conversations';
@@ -26,6 +31,7 @@ import {
   type SQL,
 } from 'drizzle-orm';
 
+/** Kolom dasar percakapan yang dikembalikan ke lapisan service. */
 export const conversationColumns = {
   id: conversations.id,
   type: conversations.type,
@@ -36,6 +42,7 @@ export const conversationColumns = {
   createdAt: conversations.createdAt,
 };
 
+/** Kolom keanggotaan: peran, waktu bisu, dan penanda bersih-riwayat. */
 export const memberColumns = {
   id: conversationMembers.id,
   userId: conversationMembers.userId,
@@ -45,6 +52,7 @@ export const memberColumns = {
   clearedAt: conversationMembers.clearedAt,
 };
 
+/** Sisipkan percakapan baru dan kembalikan kolom dasarnya. */
 export async function createConversation(data: {
   type: string;
   name?: string;
@@ -56,6 +64,7 @@ export async function createConversation(data: {
   return conversation;
 }
 
+/** Cari percakapan PRIVATE yang memuat kedua pengguna sekaligus. */
 export async function findPrivateConversation(userId1: string, userId2: string) {
   const c1 = db
     .select({ id: conversationMembers.conversationId })
@@ -80,10 +89,17 @@ export async function findPrivateConversation(userId1: string, userId2: string) 
   return result || null;
 }
 
+/**
+ * Ambil percakapan privat dua pengguna, atau buat bila belum ada.
+ * @returns Percakapan yang sudah ada atau yang baru dibuat
+ */
 export async function createPrivateConversationIfMissing(userId1: string, userId2: string) {
+  // Kunci disortir agar pasangan (A,B) dan (B,A) menghasilkan hash sama.
   const lockKey = ['dm', userId1, userId2].sort().join(':');
 
   return db.transaction(async (tx) => {
+    // Advisory lock transaksional: cegah dua request paralel menciptakan
+    // dua percakapan privat untuk pasangan yang sama.
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`);
 
     const c1 = tx
@@ -122,12 +138,17 @@ export async function createPrivateConversationIfMissing(userId1: string, userId
   });
 }
 
+/**
+ * Daftar percakapan pengguna untuk sidebar: pesan terakhir, lawan
+ * bicara, jumlah anggota, dan hitungan belum dibaca dalam satu query.
+ */
 export async function findConversationList(
   userId: string,
   options: { search?: string; cursor?: { sortKey: string; id: string }; limit: number },
 ) {
   const { search, cursor, limit } = options;
 
+  // Keanggotaan milik pengguna: peran, bisu, clearedAt, hiddenAt.
   const mine = db
     .select({
       conversationId: conversationMembers.conversationId,
@@ -140,11 +161,13 @@ export async function findConversationList(
     .where(eq(conversationMembers.userId, userId))
     .as('mine');
 
+  // Semua ID percakapan milik pengguna (dipakai subquery lain).
   const userConversations = db
     .select({ conversationId: conversationMembers.conversationId })
     .from(conversationMembers)
     .where(eq(conversationMembers.userId, userId));
 
+  // Lawan bicara: anggota lain pada percakapan milik pengguna.
   const peer = db
     .select({
       conversationId: conversationMembers.conversationId,
@@ -159,8 +182,11 @@ export async function findConversationList(
     )
     .as('peer');
 
+  // Alias tabel users untuk profil lawan bicara.
   const peerUser = aliasedTable(users, 'peer_user');
 
+  // Pesan terakhir tiap percakapan memakai DISTINCT ON: satu baris
+  // per conversationId dengan createdAt terbaru.
   const lastMessage = db
     .selectDistinctOn([messages.conversationId], {
       conversationId: messages.conversationId,
@@ -183,6 +209,7 @@ export async function findConversationList(
     .orderBy(messages.conversationId, desc(messages.createdAt))
     .as('last_message');
 
+  // Jumlah anggota per percakapan (relevan untuk grup).
   const memberCounts = db
     .select({
       conversationId: conversationMembers.conversationId,
@@ -193,6 +220,7 @@ export async function findConversationList(
     .groupBy(conversationMembers.conversationId)
     .as('member_counts');
 
+  // Hitung pesan masuk (bukan kiriman sendiri) yang belum SEEN.
   const unread = db
     .select({
       conversationId: messages.conversationId,
@@ -210,10 +238,14 @@ export async function findConversationList(
     .groupBy(messages.conversationId)
     .as('unread');
 
+  // Kunci urutan: waktu pesan terakhir; jatuh ke createdAt percakapan
+  // bila belum punya pesan.
   const sortKey = sql`COALESCE(${lastMessage.createdAt}, ${conversations.createdAt})`;
 
+  // Percakapan yang disembunyikan sendiri (hiddenAt) tidak ditampilkan.
   const conditions: (SQL | undefined)[] = [isNull(mine.hiddenAt)];
   if (search) {
+    // Escape wildcard LIKE agar input pencarian diperlakukan literal.
     const escaped = search.replace(/[\\%_]/g, '\\$&');
     const pattern = `%${escaped}%`;
     conditions.push(
@@ -226,6 +258,8 @@ export async function findConversationList(
       )!,
     );
   }
+  // Paginasi keyset komposit (sortKey, id): tetap deterministik walau
+  // ada timestamp kembar; limit+1 untuk deteksi halaman berikutnya.
   if (cursor)
     conditions.push(
       sql`(${sortKey}, ${conversations.id}) < (${cursor.sortKey}::timestamptz, ${cursor.id}::uuid)`,
@@ -286,6 +320,7 @@ export async function findConversationList(
     .limit(limit + 1);
 }
 
+/** Ambil satu percakapan berdasarkan ID. */
 export async function findConversationById(id: string) {
   const [result] = await db
     .select(conversationColumns)
@@ -295,6 +330,7 @@ export async function findConversationById(id: string) {
   return result || null;
 }
 
+/** Anggota percakapan beserta profil publik penggunanya. */
 export async function findMembersByConversationId(conversationId: string) {
   return db
     .select({
@@ -310,6 +346,7 @@ export async function findMembersByConversationId(conversationId: string) {
     .where(eq(conversationMembers.conversationId, conversationId));
 }
 
+/** True bila pengguna adalah anggota percakapan. */
 export async function isMember(conversationId: string, userId: string) {
   const [result] = await db
     .select({ id: conversationMembers.id })
@@ -324,6 +361,7 @@ export async function isMember(conversationId: string, userId: string) {
   return !!result;
 }
 
+/** Baris keanggotaan pengguna (kolom clearedAt untuk filter riwayat). */
 export async function findMembershipByUser(conversationId: string, userId: string) {
   const [result] = await db
     .select({ clearedAt: conversationMembers.clearedAt })
@@ -338,6 +376,7 @@ export async function findMembershipByUser(conversationId: string, userId: strin
   return result || null;
 }
 
+/** Hapus keanggotaan pengguna dari percakapan. */
 export async function removeMember(conversationId: string, userId: string) {
   await db
     .delete(conversationMembers)
@@ -349,6 +388,10 @@ export async function removeMember(conversationId: string, userId: string) {
     );
 }
 
+/**
+ * Sembunyikan percakapan untuk diri sendiri via hiddenAt; data pesan
+ * dan tampilan bagi pengguna lain tidak berubah.
+ */
 export async function hideConversationForSelf(conversationId: string, userId: string) {
   await db
     .update(conversationMembers)
@@ -361,6 +404,7 @@ export async function hideConversationForSelf(conversationId: string, userId: st
     );
 }
 
+/** Tampilkan kembali percakapan yang disembunyikan untuk diri sendiri. */
 export async function unhideConversationForSelf(conversationId: string, userId: string) {
   await db
     .update(conversationMembers)
@@ -373,6 +417,7 @@ export async function unhideConversationForSelf(conversationId: string, userId: 
     );
 }
 
+/** Tampilkan kembali percakapan bagi banyak anggota (pesan baru masuk). */
 export async function unhideConversationMembers(conversationId: string, userIds: string[]) {
   if (userIds.length === 0) return;
   await db
@@ -386,6 +431,7 @@ export async function unhideConversationMembers(conversationId: string, userIds:
     );
 }
 
+/** Buat percakapan grup + anggota awal dalam satu transaksi. */
 export async function createGroupAtomically(
   data: {
     type: string;
@@ -412,12 +458,19 @@ export async function createGroupAtomically(
   });
 }
 
+/**
+ * Tambah anggota grup secara atomik dengan cek duplikat dan kuota.
+ * @returns ID pengguna yang benar-benar ditambahkan
+ * @throws BadRequestError jika semua sudah anggota atau kuota penuh
+ */
 export async function addMembersAtomically(
   conversationId: string,
   userIds: string[],
   maxMembers: number,
 ) {
   return db.transaction(async (tx) => {
+    // Advisory lock per-grup: cegah balapan pembacaan jumlah anggota
+    // saat penambahan/penghapusan anggota bersamaan.
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${'group:' + conversationId}))`);
     const existing = await tx
       .select({ userId: conversationMembers.userId })
@@ -435,8 +488,15 @@ export async function addMembersAtomically(
   });
 }
 
+/**
+ * Keluarkan anggota secara atomik; blokir penghapusan admin terakhir.
+ * @throws NotFoundError jika target bukan anggota
+ * @throws BadRequestError jika target adalah satu-satunya admin
+ */
 export async function removeMemberAtomically(conversationId: string, targetUserId: string) {
   return db.transaction(async (tx) => {
+    // Advisory lock per-grup agar cek "admin terakhir" tidak balapan
+    // dengan perubahan peran/keluar anggota lain.
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${'group:' + conversationId}))`);
     const members = await tx
       .select({ userId: conversationMembers.userId, role: conversationMembers.role })
@@ -459,12 +519,18 @@ export async function removeMemberAtomically(conversationId: string, targetUserI
   });
 }
 
+/**
+ * Ubah peran anggota secara atomik; blokir demosi admin terakhir.
+ * @throws NotFoundError jika target bukan anggota
+ * @throws BadRequestError jika demosi menyisakan nol admin
+ */
 export async function changeRoleAtomically(
   conversationId: string,
   targetUserId: string,
   role: string,
 ) {
   return db.transaction(async (tx) => {
+    // Advisory lock per-grup: konsisten dengan operasi anggota lain.
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${'group:' + conversationId}))`);
     const members = await tx
       .select({ userId: conversationMembers.userId, role: conversationMembers.role })
@@ -488,8 +554,16 @@ export async function changeRoleAtomically(
   });
 }
 
+/**
+ * Keluar grup secara atomik: bila pelaku pemilik grup, kepemilikan
+ * ditransfer ke admin/member terpilih; bila admin terakhir, satu
+ * member dipromosikan agar grup tetap punya admin.
+ * @returns promotedUserId dan transferredToId bila terjadi
+ */
 export async function leaveGroupAtomically(conversationId: string, userId: string) {
   return db.transaction(async (tx) => {
+    // Advisory lock per-grup: promosi/transfer tidak boleh diselingi
+    // operasi anggota lain.
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${'group:' + conversationId}))`);
     const [conversation] = await tx
       .select({ createdBy: conversations.createdBy })
@@ -507,6 +581,8 @@ export async function leaveGroupAtomically(conversationId: string, userId: strin
 
     const admins = members.filter((m) => m.role === 'ADMIN');
     if (conversation?.createdBy === userId) {
+      // Pemilik keluar: penerus = admin lain, atau member pertama
+      // (dipromosikan jadi admin); createdBy ikut berpindah.
       const successor =
         admins.find((m) => m.userId !== userId) ?? members.find((m) => m.role === 'MEMBER');
       if (successor) {
@@ -529,6 +605,8 @@ export async function leaveGroupAtomically(conversationId: string, userId: strin
           .where(eq(conversations.id, conversationId));
       }
     } else if (current.role === 'ADMIN' && admins.length === 1) {
+      // Admin terakhir (bukan pemilik) keluar: promosi satu member
+      // supaya grup tidak kehilangan admin.
       const nonAdmin = members.filter((m) => m.role === 'MEMBER');
       if (nonAdmin.length > 0) {
         promotedUserId = nonAdmin[0].userId;
@@ -544,6 +622,7 @@ export async function leaveGroupAtomically(conversationId: string, userId: strin
       }
     }
 
+    // Terakhir: hapus keanggotaan pelaku keluar.
     await tx
       .delete(conversationMembers)
       .where(
@@ -585,6 +664,7 @@ const pinnedMessageSenderColumns = {
 
 const senderUser = aliasedTable(users, 'sender_user');
 
+/** Profil publik pengguna untuk kartu anggota. */
 export const memberUserColumns = {
   username: users.username,
   fullName: users.fullName,
@@ -593,6 +673,12 @@ export const memberUserColumns = {
   lastSeenAt: users.lastSeenAt,
 };
 
+/**
+ * Pesan percakapan untuk paginasi mundur (terbaru -> terlama).
+ * @param cursor Kursor komposit (createdAt, id) halaman sebelumnya
+ * @param clearedAt Batas bawah waktu akibat bersih-riwayat pengguna
+ * @param userId Bila diisi, status baca memakai sudut pandang user tsb
+ */
 export async function findMessagesByConversationId(
   conversationId: string,
   cursor?: { sortKey: string; id: string },
@@ -600,6 +686,8 @@ export async function findMessagesByConversationId(
   clearedAt?: Date | null,
   userId?: string,
 ) {
+  // Keyset (createdAt, id) untuk kursor; clearedAt menyembunyikan
+  // pesan sebelum riwayat dibersihkan pengguna.
   const conditions = [eq(messages.conversationId, conversationId)];
   if (clearedAt) conditions.push(gt(messages.createdAt, clearedAt));
   if (cursor)
@@ -607,6 +695,8 @@ export async function findMessagesByConversationId(
       sql`(${messages.createdAt}, ${messages.id}) < (${cursor.sortKey}::timestamptz, ${cursor.id}::uuid)`,
     );
 
+  // Agregat status seluruh penerima per pesan: rank maksimum menentukan
+  // status gabungan (0=SENT, 1=DELIVERED, 2=SEEN).
   const statusAgg = db
     .select({
       messageId: messageStatus.messageId,
@@ -622,6 +712,7 @@ export async function findMessagesByConversationId(
     .groupBy(messageStatus.messageId)
     .as('status_agg');
 
+  // Status baca versi pengguna ini (untuk pesan yang dia terima).
   const myStatusAgg = userId
     ? db
         .select({
@@ -640,6 +731,7 @@ export async function findMessagesByConversationId(
         .as('my_status_agg')
     : undefined;
 
+  // Tanda bintang milik pengguna (subquery kosong bila tak diminta).
   const star = userId
     ? db
         .select({ messageId: messageStars.messageId, starredAt: messageStars.createdAt })
@@ -648,6 +740,8 @@ export async function findMessagesByConversationId(
         .as('star_agg')
     : undefined;
 
+  // Pengirim melihat agregat seluruh penerima; penerima melihat
+  // status bacaannya sendiri.
   const query = db
     .select({
       ...messageColumns,
@@ -674,12 +768,17 @@ export async function findMessagesByConversationId(
   if (myStatusAgg) query.leftJoin(myStatusAgg, eq(myStatusAgg.messageId, messages.id));
   if (star) query.leftJoin(star, eq(star.messageId, messages.id));
 
+  // limit+1: baris ekstra menandakan masih ada halaman berikutnya.
   return query
     .where(and(...conditions))
     .orderBy(desc(messages.createdAt), desc(messages.id))
     .limit(limit + 1);
 }
 
+/**
+ * Catat clearedAt keanggotaan: pesan sebelum waktu ini dianggap
+ * tidak ada bagi pengguna tersebut.
+ */
 export async function clearConversation(conversationId: string, userId: string) {
   const [row] = await db
     .update(conversationMembers)
@@ -694,6 +793,7 @@ export async function clearConversation(conversationId: string, userId: string) 
   return row || null;
 }
 
+/** Atur kedaluwarsa bisu keanggotaan; null berarti tidak dibisukan. */
 export async function setMutedUntil(
   conversationId: string,
   userId: string,
@@ -712,6 +812,7 @@ export async function setMutedUntil(
   return row || null;
 }
 
+/** Semua fileUrl lampiran percakapan (bahan pembersihan berkas). */
 export async function findConversationAttachmentPaths(conversationId: string) {
   const rows = await db
     .select({ fileUrl: messages.fileUrl })
@@ -720,6 +821,11 @@ export async function findConversationAttachmentPaths(conversationId: string) {
   return rows.map((r) => r.fileUrl as string);
 }
 
+/**
+ * Hitung pesan aktif (belum dihapus) yang memakai fileUrl yang sama.
+ * @param excludeConversationId Kecualikan pesan dari percakapan ini
+ * @returns Jumlah referensi lain; 0 berarti berkas aman di-unlink
+ */
 export async function countMessageFileReferences(fileUrl: string, excludeConversationId?: string) {
   const conditions: SQL[] = [eq(messages.fileUrl, fileUrl), eq(messages.isDeleted, false)];
   if (excludeConversationId) {
@@ -732,6 +838,7 @@ export async function countMessageFileReferences(fileUrl: string, excludeConvers
   return Number(row?.value ?? 0);
 }
 
+/** Hapus percakapan dan notifikasi terkait dalam satu transaksi. */
 export async function deleteConversation(conversationId: string) {
   await db.transaction(async (tx) => {
     const messageIds = await tx
@@ -752,6 +859,7 @@ export async function deleteConversation(conversationId: string) {
   });
 }
 
+/** Ambil satu pesan berdasarkan ID. */
 export async function findMessageById(id: string) {
   const [message] = await db
     .select(messageColumns)
@@ -761,6 +869,7 @@ export async function findMessageById(id: string) {
   return message || null;
 }
 
+/** Ubah isi pesan; tandai isEdited beserta waktunya. */
 export async function updateMessageContent(id: string, content: string) {
   const [message] = await db
     .update(messages)
@@ -770,6 +879,7 @@ export async function updateMessageContent(id: string, content: string) {
   return message || null;
 }
 
+/** Hapus lunak: isDeleted=true dan isi pesan dikosongkan. */
 export async function softDeleteMessage(id: string) {
   const [message] = await db
     .update(messages)
@@ -779,6 +889,7 @@ export async function softDeleteMessage(id: string) {
   return message || null;
 }
 
+/** Atur sematan pesan; pinnedAt diisi/dikosongkan sesuai status. */
 export async function updateMessagePinned(id: string, isPinned: boolean) {
   const now = new Date();
   const [message] = await db
@@ -793,6 +904,7 @@ export async function updateMessagePinned(id: string, isPinned: boolean) {
   return message || null;
 }
 
+/** Pesan tersemat percakapan, urut waktu sematan terbaru. */
 export async function findPinnedMessagesByConversation(conversationId: string, limit = 50) {
   return db
     .select({ ...messageColumns, ...pinnedMessageSenderColumns })
@@ -810,6 +922,7 @@ export async function findPinnedMessagesByConversation(conversationId: string, l
     .limit(limit);
 }
 
+/** Sisipkan pesan baru (termasuk tipe SYSTEM) dan kembalikan barisnya. */
 export async function insertMessage(data: {
   conversationId: string;
   senderId: string;
@@ -820,6 +933,7 @@ export async function insertMessage(data: {
   return message || null;
 }
 
+/** Isi status awal (SENT/DELIVERED) untuk pengirim & penerima. */
 export async function insertMessageStatuses(
   rows: { messageId: string; userId: string; status: 'SENT' | 'DELIVERED' }[],
 ) {
@@ -827,6 +941,7 @@ export async function insertMessageStatuses(
   await db.insert(messageStatus).values(rows);
 }
 
+/** Keanggotaan + tipe/nama percakapan; untuk otorisasi & payload push. */
 export async function findConversationMembership(conversationId: string, userId: string) {
   const [row] = await db
     .select({
@@ -845,6 +960,10 @@ export async function findConversationMembership(conversationId: string, userId:
   return row || null;
 }
 
+/**
+ * Simpan pesan lampiran + seluruh baris status penerima dalam satu
+ * transaksi agar pesan tidak pernah "tanpa status".
+ */
 export async function insertAttachmentMessageAtomically(
   conversationId: string,
   senderId: string,
@@ -888,6 +1007,10 @@ export async function insertAttachmentMessageAtomically(
   });
 }
 
+/**
+ * Salin pesan (termasuk metadata berkas; fileUrl dipakai ulang, bukan
+ * dipindah) ke percakapan tujuan beserta status penerima, atomik.
+ */
 export async function forwardMessageAtomically(
   targetConversationId: string,
   senderId: string,
@@ -919,6 +1042,7 @@ export async function forwardMessageAtomically(
   });
 }
 
+/** ID seluruh anggota + mutedUntil (bahan notifikasi/push). */
 export async function findConversationMemberIds(conversationId: string) {
   return db
     .select({ userId: conversationMembers.userId, mutedUntil: conversationMembers.mutedUntil })
@@ -926,6 +1050,11 @@ export async function findConversationMemberIds(conversationId: string) {
     .where(eq(conversationMembers.conversationId, conversationId));
 }
 
+/**
+ * ID pesan masuk (bukan kiriman sendiri) pada percakapan.
+ * @param options.before Cutoff opsional: hanya pesan dengan createdAt
+ *   <= waktu tsb (sinkronisasi SEEN dari klien)
+ */
 export async function findIncomingMessageIdsByConversation(
   conversationId: string,
   userId: string,
@@ -945,10 +1074,18 @@ export async function findIncomingMessageIdsByConversation(
   ).map((row) => row.id);
 }
 
+/**
+ * Tandai pesan SEEN untuk satu pengguna: UPDATE baris lama, INSERT
+ * baris yang belum ada (idempoten via onConflictDoUpdate).
+ * @returns ID pesan yang statusnya berubah menjadi SEEN
+ */
 export async function markMessagesSeen(userId: string, messageIds: string[], seenAt: Date) {
+  // Cocokkan banyak UUID sekaligus lewat ANY(uuid[]) agar hemat round-trip.
   const messageIdIn = (ids: string[]) =>
     sql`${messageStatus.messageId} = ANY(${`{${ids.join(',')}}`}::uuid[])`;
 
+  // Pisahkan pesan yang sudah punya baris status (cukup UPDATE)
+  // dari yang belum (perlu INSERT).
   const existingRows = await db
     .select({ messageId: messageStatus.messageId })
     .from(messageStatus)
@@ -989,6 +1126,7 @@ export async function markMessagesSeen(userId: string, messageIds: string[], see
   return [...new Set([...updated.map((row) => row.messageId), ...newIds])];
 }
 
+/** Petakan messageId -> senderId untuk emit status ke pengirim. */
 export async function findMessageSenders(messageIds: string[]) {
   if (messageIds.length === 0) return [];
   return db
@@ -997,16 +1135,22 @@ export async function findMessageSenders(messageIds: string[]) {
     .where(inArray(messages.id, messageIds));
 }
 
+/** Tambah bintang pesan untuk pengguna; abaikan bila sudah ada. */
 export async function addStar(messageId: string, userId: string) {
   await db.insert(messageStars).values({ messageId, userId }).onConflictDoNothing();
 }
 
+/** Hapus bintang pesan milik pengguna. */
 export async function removeStar(messageId: string, userId: string) {
   await db
     .delete(messageStars)
     .where(and(eq(messageStars.messageId, messageId), eq(messageStars.userId, userId)));
 }
 
+/**
+ * Pesan berbintang milik pengguna untuk paginasi keyset.
+ * @param cursor Kursor komposit (starredAt, messageId)
+ */
 export async function findStarredMessages(
   userId: string,
   cursor?: { sortKey: string; id: string },
@@ -1023,6 +1167,8 @@ export async function findStarredMessages(
 
   const senderUser = aliasedTable(users, 'star_sender');
 
+  // Keyset pada (starredAt, messageId); limit+1 mendeteksi halaman
+  // berikutnya.
   const conditions: SQL[] = [];
   if (cursor)
     conditions.push(
@@ -1060,6 +1206,7 @@ export async function findStarredMessages(
     .limit(limit + 1);
 }
 
+/** Waktu dibuatnya bintang sebuah pesan untuk pengguna. */
 export async function findStar(messageId: string, userId: string) {
   const [row] = await db
     .select({ createdAt: messageStars.createdAt })
@@ -1069,6 +1216,7 @@ export async function findStar(messageId: string, userId: string) {
   return row || null;
 }
 
+/** Cari reaksi emoji tertentu dari pengguna pada sebuah pesan. */
 export async function findReaction(messageId: string, userId: string, emoji: string) {
   const [row] = await db
     .select({ id: messageReactions.id })
@@ -1084,10 +1232,12 @@ export async function findReaction(messageId: string, userId: string, emoji: str
   return row || null;
 }
 
+/** Tambahkan reaksi emoji dari pengguna pada pesan. */
 export async function addReaction(messageId: string, userId: string, emoji: string) {
   await db.insert(messageReactions).values({ messageId, userId, emoji });
 }
 
+/** Hapus reaksi emoji tertentu dari pengguna pada pesan. */
 export async function removeReaction(messageId: string, userId: string, emoji: string) {
   await db
     .delete(messageReactions)
@@ -1100,6 +1250,7 @@ export async function removeReaction(messageId: string, userId: string, emoji: s
     );
 }
 
+/** Semua reaksi (emoji + userId) untuk sebuah pesan. */
 export async function findReactionsByMessage(messageId: string) {
   return db
     .select({

@@ -1,3 +1,8 @@
+/**
+ * Logika bisnis modul grup: pembuatan, pembaruan profil & avatar,
+ * manajemen anggota dan peran, keluar grup dengan transfer kepemilikan,
+ * serta pembubaran grup termasuk pembersihan berkas lampiran.
+ */
 import * as repository from './groups.repository';
 import { findUserById } from '../auth/auth.repository';
 import {
@@ -23,15 +28,22 @@ import { unlinkQuietly } from '../../utils/cleanup';
 import { toSender } from '../../utils/sender';
 import path from 'path';
 
+// Nama tampilan dengan fallback: fullName -> username -> 'Unknown'.
 function displayName(user: { fullName?: string | null; username?: string } | null | undefined) {
   return user?.fullName || user?.username || 'Unknown';
 }
 
+/**
+ * Hapus berkas fisik lampiran percakapan dan avatar grup dari storage.
+ * Referensi-aware: berkas hanya di-unlink bila tidak ada pesan lain
+ * (mis. hasil forward) yang masih memakai fileUrl yang sama.
+ */
 async function cleanupConversationFiles(
   conversationId: string,
   avatarUrl: string | null | undefined,
 ) {
   const filePaths = await findConversationAttachmentPaths(conversationId);
+  // Hitung referensi lintas percakapan sebelum menghapus tiap berkas.
   for (const url of filePaths) {
     if ((await countMessageFileReferences(url, conversationId)) === 0) {
       const filename = url.split('/').pop();
@@ -48,6 +60,10 @@ async function cleanupConversationFiles(
   }
 }
 
+/**
+ * Simpan pesan SYSTEM ke DB lalu siarkan ke room percakapan.
+ * @returns Payload pesan lengkap dengan data pengirim
+ */
 async function emitSystemMessage(
   conversationId: string,
   senderId: string,
@@ -61,6 +77,11 @@ async function emitSystemMessage(
   return payload;
 }
 
+/**
+ * Gerbang otorisasi admin: pastikan grup ada, bertipe GROUP, dan
+ * pelaku merupakan anggota berperan ADMIN.
+ * @returns Data percakapan beserta daftar anggotanya
+ */
 async function validateGroupAdmin(userId: string, groupId: string) {
   const [conversation, members] = await Promise.all([
     findConversationById(groupId),
@@ -77,6 +98,11 @@ async function validateGroupAdmin(userId: string, groupId: string) {
   return { conversation, members };
 }
 
+/**
+ * Buat grup baru; pembuat otomatis menjadi ADMIN.
+ * @throws BadRequestError jika kuota terlampaui / ada yang belum verifikasi
+ * @throws NotFoundError jika ada participantId tidak dikenal
+ */
 export async function createGroup(
   userId: string,
   data: { name: string; description?: string; participantIds: string[] },
@@ -88,12 +114,14 @@ export async function createGroup(
   if (allIds.length > MAX_GROUP_MEMBERS)
     throw new BadRequestError(`Group cannot have more than ${MAX_GROUP_MEMBERS} members`);
 
+  // Pastikan setiap calon anggota ada dan sudah terverifikasi.
   for (const id of allIds) {
     const user = await findUserById(id);
     if (!user) throw new NotFoundError(`User ${id} not found`);
     if (!user.isVerified) throw new BadRequestError('All group members must be verified');
   }
 
+  // Grup + anggota dibuat atomik agar tak ada grup tanpa anggota.
   const conversation = await createGroupAtomically(
     {
       type: 'GROUP',
@@ -116,6 +144,7 @@ export async function createGroup(
     actor,
   );
 
+  // Undangan grup untuk semua partisipan kecuali pembuat.
   await createAndEmitMany(
     allIds
       .filter((id) => id !== userId)
@@ -129,6 +158,7 @@ export async function createGroup(
       })),
   );
 
+  // Umumkan grup baru lalu gabungkan socket semua anggota ke room-nya.
   const io = getIO();
   allIds.forEach((id) => {
     io.to(`user:${id}`).emit('group:created', {
@@ -141,6 +171,7 @@ export async function createGroup(
   return conversation;
 }
 
+/** Perbarui nama/deskripsi grup (khusus admin) dan siarkan perubahan. */
 export async function updateGroup(
   userId: string,
   groupId: string,
@@ -152,6 +183,7 @@ export async function updateGroup(
     getIO().to(`user:${m.userId}`).emit('group:updated', updated);
   });
 
+  // Pesan sistem hanya bila nama benar-benar berubah.
   if (data.name && data.name !== conversation.name) {
     const actor = await findUserById(userId);
     await emitSystemMessage(
@@ -165,6 +197,7 @@ export async function updateGroup(
   return updated;
 }
 
+/** Ganti avatar grup (admin) dan hapus berkas avatar lama. */
 export async function updateAvatar(userId: string, groupId: string, file: Express.Multer.File) {
   const { conversation, members } = await validateGroupAdmin(userId, groupId);
   const avatarUrl = `/uploads/${file.filename}`;
@@ -172,6 +205,7 @@ export async function updateAvatar(userId: string, groupId: string, file: Expres
   members.forEach((m) => {
     getIO().to(`user:${m.userId}`).emit('group:avatar-updated', updated);
   });
+  // Avatar lama dihapus fisik setelah DB berhasil diperbarui.
   if (conversation.avatarUrl) {
     const filename = conversation.avatarUrl.split('/').pop();
     if (filename) {
@@ -181,9 +215,15 @@ export async function updateAvatar(userId: string, groupId: string, file: Expres
   return updated;
 }
 
+/**
+ * Tambah banyak anggota baru (khusus admin): validasi pengguna dan
+ * deduplikasi di sini, penambahan atomik + cek kuota di repository.
+ * @returns Jumlah anggota yang benar-benar ditambahkan
+ */
 export async function addMembers(userId: string, groupId: string, userIds: string[]) {
   const { conversation, members } = await validateGroupAdmin(userId, groupId);
 
+  // Deduplikasi input lalu buang yang sudah menjadi anggota.
   const uniqueUserIds = [...new Set(userIds)];
   const existingIds = new Set(members.map((m) => m.userId));
   const newIds = uniqueUserIds.filter((id) => !existingIds.has(id));
@@ -198,11 +238,14 @@ export async function addMembers(userId: string, groupId: string, userIds: strin
     newUsers.push(user);
   }
 
+  // Penambahan aktual di repository (advisory lock + cek kuota); hasil
+  // bisa lebih sedikit bila ada penambahan paralel.
   const addedIds = await addMembersAtomically(groupId, newIds, MAX_GROUP_MEMBERS);
   const addedUsers = newUsers.filter((u) => addedIds.includes(u.id));
 
   const io = getIO();
 
+  // Event berbeda untuk anggota baru vs anggota lama.
   addedIds.forEach((id) => {
     io.to(`user:${id}`).emit('group:member-added', {
       conversationId: groupId,
@@ -237,11 +280,16 @@ export async function addMembers(userId: string, groupId: string, userIds: strin
     })),
   );
 
+  // Masukkan socket anggota baru ke room grup.
   io.in(addedIds.map((id) => `user:${id}`)).socketsJoin(`conversation:${groupId}`);
 
   return { added: addedIds.length };
 }
 
+/**
+ * Keluarkan satu anggota dari grup (khusus admin). Pembuat grup tidak
+ * dapat dikeluarkan; admin hanya dapat dikeluarkan oleh pembuat.
+ */
 export async function removeMember(userId: string, groupId: string, targetUserId: string) {
   const { conversation, members } = await validateGroupAdmin(userId, groupId);
 
@@ -279,9 +327,14 @@ export async function removeMember(userId: string, groupId: string, targetUserId
     actor,
   );
 
+  // Paksa socket target keluar dari room grup.
   await forceLeaveConversationRoom(targetUserId, groupId);
 }
 
+/**
+ * Ubah peran anggota (ADMIN/MEMBER) oleh admin. Peran pembuat tidak
+ * dapat diubah; demosi admin hanya boleh dilakukan pembuat.
+ */
 export async function changeRole(
   userId: string,
   groupId: string,
@@ -290,6 +343,7 @@ export async function changeRole(
 ) {
   const { conversation, members } = await validateGroupAdmin(userId, groupId);
 
+  // Tidak boleh mengubah peran sendiri maupun peran pembuat grup.
   if (targetUserId === userId) throw new BadRequestError('You cannot change your own role');
   if (conversation.createdBy === targetUserId)
     throw new ForbiddenError('Cannot change the group creator role');
@@ -321,6 +375,11 @@ export async function changeRole(
   );
 }
 
+/**
+ * Keluar dari grup. Bila pelaku pemilik/admin terakhir, transfer
+ * kepemilikan atau promosi admin ditangani leaveGroupAtomically.
+ * Grup yang tinggal kosong otomatis dibubarkan beserta berkasnya.
+ */
 export async function leaveGroup(userId: string, groupId: string) {
   const conversation = await findConversationById(groupId);
   if (!conversation) throw new NotFoundError('Group not found');
@@ -330,8 +389,10 @@ export async function leaveGroup(userId: string, groupId: string) {
   if (!members.some((m) => m.userId === userId))
     throw new NotFoundError('You are not a member of this group');
 
+  // Transaksi atomik: promosi/transfer + penghapusan keanggotaan.
   const { promotedUserId, transferredToId } = await leaveGroupAtomically(groupId, userId);
 
+  // Member dipromosikan menjadi admin menggantikan yang keluar.
   if (promotedUserId) {
     const [leaverUser, newAdminUser] = await Promise.all([
       findUserById(userId),
@@ -353,6 +414,7 @@ export async function leaveGroup(userId: string, groupId: string) {
     );
   }
 
+  // Kepemilikan grup berpindah ke admin/member terpilih.
   if (transferredToId) {
     const [leaverUser, newOwnerUser] = await Promise.all([
       findUserById(userId),
@@ -376,6 +438,8 @@ export async function leaveGroup(userId: string, groupId: string) {
   const membersAfter = await findMembersByConversationId(groupId);
   const io = getIO();
 
+  // Auto-dismiss: grup tanpa anggota dihapus bersama berkas lampiran
+  // dan avatarnya (referensi-aware), lalu room socket dibubarkan.
   if (membersAfter.length === 0) {
     await cleanupConversationFiles(groupId, conversation.avatarUrl);
     await deleteConversation(groupId);
@@ -386,6 +450,7 @@ export async function leaveGroup(userId: string, groupId: string) {
     return;
   }
 
+  // Masih ada anggota: umumkan kepergian lewat event + pesan sistem.
   io.to(`user:${userId}`).emit('group:member-removed', {
     conversationId: groupId,
     targetUserId: userId,
@@ -405,12 +470,18 @@ export async function leaveGroup(userId: string, groupId: string) {
   await forceLeaveConversationRoom(userId, groupId);
 }
 
+/**
+ * Bubarkan grup (hanya pembuat): berkas lampiran & avatar dibersihkan
+ * secara referensi-aware sebelum data percakapan dihapus.
+ */
 export async function dismissGroup(userId: string, groupId: string) {
   const { conversation, members } = await validateGroupAdmin(userId, groupId);
 
   if (conversation.createdBy !== userId)
     throw new ForbiddenError('Only the group creator can dismiss the group');
 
+  // Berkas dibersihkan sebelum baris DB hilang agar daftar fileUrl
+  // masih dapat dihitung referensinya.
   await cleanupConversationFiles(groupId, conversation.avatarUrl);
   await deleteConversation(groupId);
 

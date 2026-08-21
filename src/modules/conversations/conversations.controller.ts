@@ -1,3 +1,8 @@
+/**
+ * Controller HTTP modul percakapan: menguraikan & memvalidasi request,
+ * memanggil service terkait, lalu membungkus hasil/error ke respons
+ * JSON dengan format { success, message?, data }.
+ */
 import { Response, NextFunction } from 'express';
 import { AuthRequest } from '../../middlewares/verifyJWT';
 import { BadRequestError } from '../../utils/errors';
@@ -10,6 +15,7 @@ import {
   uploadMessageSchema,
 } from './conversations.validator';
 
+/** Membuat percakapan privat baru dengan satu partisipan. */
 export async function createConversation(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const result = await conversationService.createConversation(req.userId!, req.body);
@@ -19,6 +25,7 @@ export async function createConversation(req: AuthRequest, res: Response, next: 
   }
 }
 
+/** Daftar percakapan pengguna dengan pencarian dan paginasi kursor. */
 export async function getConversations(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const { search, cursor, limit } = conversationListQuerySchema.parse(req.query);
@@ -33,6 +40,7 @@ export async function getConversations(req: AuthRequest, res: Response, next: Ne
   }
 }
 
+/** Detail satu percakapan beserta daftar anggotanya. */
 export async function getConversationById(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const result = await conversationService.getConversationDetail(
@@ -45,6 +53,7 @@ export async function getConversationById(req: AuthRequest, res: Response, next:
   }
 }
 
+/** Keluar dari percakapan (privat disembunyikan, grup didelegasikan). */
 export async function leaveConversation(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     await conversationService.leaveConversation(req.userId!, req.params.id as string);
@@ -54,6 +63,7 @@ export async function leaveConversation(req: AuthRequest, res: Response, next: N
   }
 }
 
+/** Bersihkan riwayat percakapan untuk diri sendiri. */
 export async function clearConversation(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const result = await conversationService.clearConversation(
@@ -66,6 +76,7 @@ export async function clearConversation(req: AuthRequest, res: Response, next: N
   }
 }
 
+/** Bisukan percakapan sampai waktu tertentu. */
 export async function muteConversation(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const result = await conversationService.setConversationMute(
@@ -79,6 +90,7 @@ export async function muteConversation(req: AuthRequest, res: Response, next: Ne
   }
 }
 
+/** Matikan bisu percakapan. */
 export async function unmuteConversation(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const result = await conversationService.unmuteConversation(
@@ -91,6 +103,7 @@ export async function unmuteConversation(req: AuthRequest, res: Response, next: 
   }
 }
 
+/** Daftar pesan percakapan dengan paginasi kursor komposit. */
 export async function getMessages(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const { cursor, limit } = paginationSchema.parse(req.query);
@@ -106,6 +119,7 @@ export async function getMessages(req: AuthRequest, res: Response, next: NextFun
   }
 }
 
+/** Kirim pesan dengan berkas lampiran hasil unggahan Multer. */
 export async function sendMessageWithAttachment(
   req: AuthRequest,
   res: Response,
@@ -122,6 +136,7 @@ export async function sendMessageWithAttachment(
   }
 }
 
+/** Daftar pesan tersemat pada percakapan. */
 export async function getPinnedMessages(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const { limit } = paginationSchema.parse(req.query);
@@ -136,6 +151,7 @@ export async function getPinnedMessages(req: AuthRequest, res: Response, next: N
   }
 }
 
+/** Edit isi pesan milik sendiri. */
 export async function editMessage(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const { id, messageId } = messageIdSchema.parse(req.params);
@@ -151,6 +167,7 @@ export async function editMessage(req: AuthRequest, res: Response, next: NextFun
   }
 }
 
+/** Hapus (soft delete) pesan milik sendiri. */
 export async function deleteMessage(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const { id, messageId } = messageIdSchema.parse(req.params);
@@ -161,6 +178,7 @@ export async function deleteMessage(req: AuthRequest, res: Response, next: NextF
   }
 }
 
+/** Sematkan pesan pada percakapan. */
 export async function pinMessage(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const { id, messageId } = messageIdSchema.parse(req.params);
@@ -171,6 +189,7 @@ export async function pinMessage(req: AuthRequest, res: Response, next: NextFunc
   }
 }
 
+/** Lepas sematan pesan. */
 export async function unpinMessage(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const { id, messageId } = messageIdSchema.parse(req.params);
@@ -181,6 +200,7 @@ export async function unpinMessage(req: AuthRequest, res: Response, next: NextFu
   }
 }
 
+/** Tandai semua pesan masuk percakapan sebagai SEEN. */
 export async function markConversationRead(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const result = await conversationService.markConversationAsRead(
@@ -193,6 +213,7 @@ export async function markConversationRead(req: AuthRequest, res: Response, next
   }
 }
 
+/** Teruskan pesan dari percakapan sumber ke percakapan tujuan. */
 export async function forwardMessage(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const { id, messageId } = messageIdSchema.parse(req.params);
@@ -208,6 +229,7 @@ export async function forwardMessage(req: AuthRequest, res: Response, next: Next
   }
 }
 
+/** Beri tanda bintang pada pesan. */
 export async function starMessage(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const { id, messageId } = messageIdSchema.parse(req.params);
@@ -218,6 +240,7 @@ export async function starMessage(req: AuthRequest, res: Response, next: NextFun
   }
 }
 
+/** Hapus tanda bintang pesan. */
 export async function unstarMessage(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const { id, messageId } = messageIdSchema.parse(req.params);
@@ -228,6 +251,7 @@ export async function unstarMessage(req: AuthRequest, res: Response, next: NextF
   }
 }
 
+/** Daftar seluruh pesan berbintang milik pengguna. */
 export async function getStarredMessages(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const { cursor, limit } = paginationSchema.parse(req.query);
