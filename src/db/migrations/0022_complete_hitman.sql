@@ -1,0 +1,2 @@
+ALTER TABLE "users" ADD COLUMN "last_seen_visibility" varchar(10) DEFAULT 'EVERYONE' NOT NULL;--> statement-breakpoint
+ALTER TABLE "users" ADD COLUMN "group_invite_policy" varchar(10) DEFAULT 'EVERYONE' NOT NULL;
