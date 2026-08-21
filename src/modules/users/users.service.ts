@@ -91,7 +91,6 @@ async function emitProfileUpdate(
 export async function getProfile(userId: string) {
   const user = await findUserById(userId);
   if (!user) throw new NotFoundError('User not found');
-
   return {
     id: user.id,
     username: user.username,
@@ -105,6 +104,29 @@ export async function getProfile(userId: string) {
     isVerified: user.isVerified,
     createdAt: user.createdAt,
   };
+}
+
+/**
+ * Mengambil pengaturan privasi milik pengguna yang sedang login.
+ * @throws NotFoundError jika pengguna tidak ditemukan
+ */
+export async function getPrivacySettings(userId: string) {
+  const settings = await repository.findPrivacySettings(userId);
+  if (!settings) throw new NotFoundError('User not found');
+  return settings;
+}
+
+/**
+ * Memperbarui sebagian atau seluruh pengaturan privasi milik sendiri.
+ * @throws NotFoundError jika pengguna tidak ditemukan
+ */
+export async function updatePrivacySettings(
+  userId: string,
+  data: { lastSeenVisibility?: string; groupInvitePolicy?: string },
+) {
+  const updated = await repository.updatePrivacySettings(userId, data);
+  if (!updated) throw new NotFoundError('User not found');
+  return updated;
 }
 
 /** Jeda minimum (hari) antar penggantian username untuk mencegah penyalahgunaan. */

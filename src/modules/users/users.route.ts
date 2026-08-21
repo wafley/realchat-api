@@ -32,6 +32,13 @@ router.put(
   controller.changePassword,
 );
 router.get('/me/blocked', verifyJWT, controller.getBlockedUsers);
+router.get('/me/privacy', verifyJWT, controller.getPrivacy);
+router.put(
+  '/me/privacy',
+  verifyJWT,
+  validate(validator.updatePrivacySchema),
+  controller.updatePrivacy,
+);
 router.post(
   '/:id/block',
   verifyJWT,

@@ -52,6 +52,37 @@ export async function updateAvatar(userId: string, avatarUrl: string) {
   return user || null;
 }
 
+/** Mengambil pengaturan privasi pengguna; null jika pengguna tidak ada. */
+export async function findPrivacySettings(userId: string) {
+  const [row] = await db
+    .select({
+      lastSeenVisibility: users.lastSeenVisibility,
+      groupInvitePolicy: users.groupInvitePolicy,
+    })
+    .from(users)
+    .where(eq(users.id, userId));
+  return row || null;
+}
+
+/**
+ * Memperbarui sebagian pengaturan privasi dan mengembalikan nilai terbaru.
+ * Hanya field yang dikirim yang berubah.
+ */
+export async function updatePrivacySettings(
+  userId: string,
+  data: { lastSeenVisibility?: string; groupInvitePolicy?: string },
+) {
+  const [row] = await db
+    .update(users)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(users.id, userId))
+    .returning({
+      lastSeenVisibility: users.lastSeenVisibility,
+      groupInvitePolicy: users.groupInvitePolicy,
+    });
+  return row || null;
+}
+
 /**
  * Mengganti password secara atomik dalam satu transaksi: hash baru disimpan
  * dan tokenVersion dinaikkan, lalu seluruh refresh token pengguna dihapus
