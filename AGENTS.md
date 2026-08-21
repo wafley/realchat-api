@@ -31,6 +31,11 @@ Catatan: DB development adalah remote (`144.79.202.196`) dengan latency pool ~7s
 
 ## Aturan penulisan
 
-- Jangan tambahkan komentar kecuali diminta.
+- **Komentar bahasa Indonesia WAJIB di semua kode** (aturan permanen sejak issue #187):
+  - Header blok `/** ... */` di atas file (sebelum import pertama): 1–3 kalimat tanggung jawab file.
+  - JSDoc untuk setiap exported function/class/interface/const/type.
+  - Inline `//` hanya untuk logika non-trivial; maksimal ~100 karakter per baris.
+  - Untuk file skema DB: JSDoc satu baris per tabel + inline komentar kolom yang tidak self-explanatory.
+- Jangan tambahkan komentar bahasa lain atau komentar tanpa nilai dokumentatif.
 - Ikuti gaya kode yang sudah ada (prettier/eslint).
 - Jangan tinggalkan file temp/artefak (script debug, log) di repo; bersihkan sebelum push.

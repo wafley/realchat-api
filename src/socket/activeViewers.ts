@@ -1,8 +1,19 @@
+/**
+ * Pelacak viewer aktif per percakapan dalam memori. Menjadi dasar penentuan
+ * status pesan SEEN/DELIVERED/SENT serta event aktivitas user-away/user-back.
+ */
 import { onlineUsers } from './onlineUsers';
 
+// Map bersarang: conversationId -> userId -> himpunan socket.id. Satu user
+// bisa membuka chat dari beberapa tab/perangkat sekaligus, sehingga user
+// dianggap berhenti melihat hanya setelah semua socket-nya dilepas.
 const activeViewers = new Map<string, Map<string, Set<string>>>();
+// Reverse map socket.id -> himpunan conversationId yang sedang dilihat,
+// agar cleanup saat disconnect cukup membaca map ini tanpa memindai
+// seluruh isi activeViewers.
 const socketRooms = new Map<string, Set<string>>();
 
+/** Mencatat sebuah socket sebagai viewer aktif pada percakapan tertentu. */
 export function addActiveViewer(socketId: string, userId: string, conversationId: string) {
   let byUser = activeViewers.get(conversationId);
   if (!byUser) {
@@ -24,6 +35,10 @@ export function addActiveViewer(socketId: string, userId: string, conversationId
   rooms.add(conversationId);
 }
 
+/**
+ * Melepas satu socket dari daftar viewer percakapan lalu merapikan map
+ * induk yang telah kosong agar struktur data tidak membengkak.
+ */
 export function removeActiveViewer(socketId: string, userId: string, conversationId: string) {
   const byUser = activeViewers.get(conversationId);
   if (!byUser) return;
@@ -40,6 +55,7 @@ export function removeActiveViewer(socketId: string, userId: string, conversatio
   }
 }
 
+/** Menghapus seluruh jejak viewer milik satu socket; dipanggil saat disconnect. */
 export function clearSocketActiveViewers(socketId: string) {
   const rooms = socketRooms.get(socketId);
   if (!rooms) return;
@@ -54,10 +70,16 @@ export function clearSocketActiveViewers(socketId: string) {
   socketRooms.delete(socketId);
 }
 
+/** Mengecek apakah user sedang membuka (menjadi viewer) percakapan tersebut. */
 export function isActiveViewer(conversationId: string, userId: string): boolean {
   return (activeViewers.get(conversationId)?.get(userId)?.size ?? 0) > 0;
 }
 
+/**
+ * Menentukan status awal pesan bagi seorang penerima memakai ranking
+ * SEEN > DELIVERED > SENT: SEEN bila user sedang membuka chat, DELIVERED
+ * bila punya koneksi socket aktif, dan SENT bila hanya tersimpan di server.
+ */
 export function computeRecipientStatus(
   conversationId: string,
   recipientId: string,

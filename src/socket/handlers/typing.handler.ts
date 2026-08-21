@@ -1,3 +1,9 @@
+/**
+ * Handler event indikator mengetik (typing:start / typing:stop) via Socket.IO.
+ * Memvalidasi payload, melakukan throttle per user dan percakapan,
+ * memastikan pengirim masih anggota, lalu menyiarkan event ke anggota lain
+ * dengan menyaring relasi blokir.
+ */
 import { Server, Socket } from 'socket.io';
 import { z } from 'zod';
 import { eq, and, ne } from 'drizzle-orm';
@@ -12,11 +18,14 @@ const typingPayloadSchema = z.object({
   conversationId: z.string().uuid(),
 });
 
+// Throttle agar client bebas mengirim event kapan pun tanpa membanjiri broadcast.
 const typingLimiter = createFixedWindowLimiter({
   windowMs: env.typingThrottleMs,
   max: 1,
 });
 
+// Limiter terpisah supaya typing:start dan typing:stop tidak saling
+// menghabiskan kuota satu sama lain.
 const typingStopLimiter = createFixedWindowLimiter({
   windowMs: env.typingThrottleMs,
   max: 1,
@@ -28,6 +37,7 @@ const pruneInterval = setInterval(() => {
 }, 60_000);
 pruneInterval.unref();
 
+/** Cek keanggotaan percakapan; kegagalan query diperlakukan bukan anggota. */
 async function isConversationMember(conversationId: string, userId: string) {
   try {
     return (await findConversationMembership(conversationId, userId)) !== null;
@@ -36,6 +46,10 @@ async function isConversationMember(conversationId: string, userId: string) {
   }
 }
 
+/**
+ * Menyiarkan event typing ke seluruh anggota percakapan lain, kecuali user
+ * yang memiliki relasi blokir dengan pengirim.
+ */
 async function broadcastTyping(
   io: Server,
   userId: string,
@@ -62,6 +76,7 @@ async function broadcastTyping(
   }
 }
 
+/** Mendaftarkan listener `typing:start` dan `typing:stop` untuk satu socket. */
 export function setupTypingHandlers(io: Server, socket: Socket) {
   const userId = (socket as Socket & { userId: string }).userId;
 

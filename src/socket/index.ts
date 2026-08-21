@@ -1,3 +1,8 @@
+/**
+ * Titik masuk realtime aplikasi: menginisialisasi server Socket.IO dengan
+ * autentikasi JWT saat handshake, mengelola room user/percakapan dan presence
+ * online/offline, lalu mendaftarkan seluruh handler event dari folder handlers.
+ */
 import { Server as HttpServer } from 'http';
 import { Server, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
@@ -16,11 +21,17 @@ import { clearSocketActiveViewers } from './activeViewers';
 
 let io: Server;
 
+/** Mengambil instance Socket.IO aktif; melempar error bila belum diinisialisasi. */
 export function getIO(): Server {
   if (!io) throw new Error('Socket.IO not initialized');
   return io;
 }
 
+/**
+ * Menyebarkan event presence (online/offline) ke semua anggota percakapan
+ * milik user. Penerima yang memiliki relasi blokir dua arah dengan user
+ * disaring agar tidak saling menerima status presence.
+ */
 async function broadcastPresence(
   server: Server,
   userId: string,
@@ -39,6 +50,7 @@ async function broadcastPresence(
           ne(conversationMembers.userId, userId),
         ),
       );
+    // Saring penerima yang saling memblokir dengan user terkait.
     const blockedIds = await blockedRepository.getBlockRelationUserIds(userId);
     const recipients = new Set<string>();
     for (const row of memberRows) {
@@ -52,6 +64,11 @@ async function broadcastPresence(
   }
 }
 
+/**
+ * Menginisialisasi Socket.IO di atas HTTP server: verifikasi JWT access token
+ * beserta tokenVersion saat handshake, join room `user:*` dan `conversation:*`,
+ * pelacakan presence multi-device, serta pemasangan semua handler event.
+ */
 export function initializeSocket(server: HttpServer) {
   io = new Server(server, {
     cors: {
@@ -82,6 +99,7 @@ export function initializeSocket(server: HttpServer) {
             .from(users)
             .where(eq(users.id, decoded.userId))
             .limit(1);
+          // Tolak token yang sudah dicabut lewat peningkatan tokenVersion.
           if (!user || decoded.tv !== user.tokenVersion) {
             return next(new Error('Invalid or expired token'));
           }
@@ -171,6 +189,8 @@ export function initializeSocket(server: HttpServer) {
         return;
       }
 
+      // Socket terakhir milik user ini baru saja putus; baru sekarang
+      // user dianggap benar-benar offline.
       onlineUsers.delete(userId);
       const now = new Date();
       void broadcastPresence(io, userId, userConversations, 'presence:offline', {

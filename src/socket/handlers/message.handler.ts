@@ -1,3 +1,9 @@
+/**
+ * Handler Socket.IO untuk seluruh siklus pesan: kirim, tandai dibaca, hapus,
+ * pin/unpin, star/unstar, dan reaksi. Setiap event memvalidasi payload,
+ * keanggotaan percakapan, dan batas laju sebelum menulis ke database.
+ * Juga menyediakan catch-up delivery status DELIVERED saat user reconnect.
+ */
 import { Server, Socket } from 'socket.io';
 import db from '../../db/index';
 import { messages } from '../../db/schema/messages';
@@ -35,6 +41,11 @@ import path from 'path';
 import { createMessageRateLimiter, createFixedWindowLimiter } from '../rateLimit';
 import { computeRecipientStatus } from '../activeViewers';
 
+/**
+ * Mengumpulkan username unik yang di-mention dalam teks pesan (mis. `@budi`).
+ * Mention valid: di awal kata atau dipisah tanda baca, 3-30 karakter
+ * alfanumerik/underscore.
+ */
 function extractMentions(content: string): string[] {
   const tokens = content.match(/(^|[^\w])@([A-Za-z0-9_]{3,30})(?=[\s,.;:!?"')]|$)/g);
   if (!tokens) return [];
@@ -45,6 +56,10 @@ function extractMentions(content: string): string[] {
   return [...seen];
 }
 
+/**
+ * Limiter laju pesan gabungan (per detik + per menit) per user. Dipakai
+ * bersama oleh event message:send dan endpoint REST pengiriman pesan.
+ */
 const messageRateLimiter = createMessageRateLimiter({
   perSecond: env.messageRatePerSecond,
   perMinute: env.messageRatePerMinute,
@@ -52,34 +67,44 @@ const messageRateLimiter = createMessageRateLimiter({
 
 export { messageRateLimiter };
 
+// Throttle event seen per user+percakapan: satu eksekusi per jendela waktu.
 const seenLimiter = createFixedWindowLimiter({
   windowMs: env.seenThrottleMs,
   max: 1,
 });
 
+// Throttle pin/unpin per user.
 const pinLimiter = createFixedWindowLimiter({
   windowMs: env.pinThrottleMs,
   max: 1,
 });
 
+// Throttle penambahan reaksi per user+pesan.
 const reactionLimiter = createFixedWindowLimiter({
   windowMs: env.reactionThrottleMs,
   max: 1,
 });
 
+// Throttle star/unstar per user.
 const starLimiter = createFixedWindowLimiter({
   windowMs: env.starThrottleMs,
   max: 1,
 });
 
+// Bersihkan bucket kedaluwarsa semua limiter secara berkala.
 const pruneInterval = setInterval(() => {
   seenLimiter.prune();
   pinLimiter.prune();
   reactionLimiter.prune();
   starLimiter.prune();
 }, 60_000);
+// unref agar interval prune tidak menahan proses Node tetap hidup.
 pruneInterval.unref();
 
+/**
+ * Mengelompokkan seluruh reaksi sebuah pesan berdasarkan emoji.
+ * @returns Daftar `{ emoji, userIds }` siap dikirim ke client.
+ */
 async function groupReactions(messageId: string) {
   const rows = await findReactionsByMessage(messageId);
   const byEmoji = new Map<string, string[]>();
@@ -91,6 +116,11 @@ async function groupReactions(messageId: string) {
   return [...byEmoji.entries()].map(([emoji, userIds]) => ({ emoji, userIds }));
 }
 
+/**
+ * Mendaftarkan seluruh listener event pesan untuk satu socket: message:send,
+ * message:seen, message:delete, message:pin/unpin, message:star/unstar, dan
+ * message:reaction:add/remove.
+ */
 export function setupMessageHandlers(io: Server, socket: Socket) {
   const userId = (socket as Socket & { userId: string }).userId;
 
@@ -157,6 +187,9 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
         }
 
         const now = new Date();
+        // Simpan pesan + status awal seluruh penerima dalam satu transaksi.
+        // Status tiap penerima dihitung dari ranking SEEN > DELIVERED > SENT
+        // (lihat computeRecipientStatus) agar tidak ada status palsu.
         const { message, members, recipientRows } = await db.transaction(async (tx) => {
           const [message] = await tx
             .insert(messages)
@@ -199,6 +232,8 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
             await tx.insert(messageStatus).values(recipientRows);
           }
 
+          // Pesan baru otomatis memunculkan kembali percakapan yang
+          // disembunyikan, baik bagi pengirim maupun penerima.
           await tx
             .update(conversationMembers)
             .set({ hiddenAt: null })
@@ -215,6 +250,7 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
           return { message, members, recipientRows };
         });
 
+        // Kabari pengirim jika pesannya sudah langsung DELIVERED/SEEN.
         for (const row of recipientRows) {
           if (row.status === 'DELIVERED' || row.status === 'SEEN') {
             io.to(`user:${userId}`).emit('message:status', {
@@ -262,6 +298,8 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
 
         callback?.({ data: messagePayload });
 
+        // Push notifikasi hanya untuk penerima yang benar-benar offline
+        // (status masih SENT).
         const offlineTargets = recipientRows
           .filter((row) => row.status === 'SENT')
           .map((row) => ({
@@ -301,6 +339,8 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
         }
         const { conversationId, lastSeenMessageId } = parsed.data;
 
+        // Event seen di-throttle per user+percakapan; saat dibatasi, balas
+        // ack kosong (bukan error) agar client tidak menganggapnya gagal.
         if (!seenLimiter.allow(`${userId}:${conversationId}`)) {
           callback?.({ data: { updated: 0 } });
           return;
@@ -335,6 +375,8 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
           return;
         }
 
+        // Kumpulkan id pesan milik pengirim lain yang dibuat sebelum/sama
+        // dengan pesan acuan; semuanya dianggap terbaca sekaligus.
         const now = new Date();
         const targetIds = (
           await db
@@ -378,6 +420,8 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
           )
           .returning({ messageId: messageStatus.messageId });
 
+        // Pesan lama yang belum punya baris status dibuat langsung SEEN
+        // lewat upsert agar tidak ada pesan yang terlewat.
         const newIds = targetIds.filter((id) => !existingIds.has(id));
         if (newIds.length > 0) {
           await db
@@ -464,11 +508,14 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
           return;
         }
 
+        // Hapus lembut: konten dikosongkan, baris pesan dipertahankan.
         await db
           .update(messages)
           .set({ isDeleted: true, content: '' })
           .where(eq(messages.id, data.messageId));
 
+        // File fisik hanya dihapus bila tidak lagi direferensikan pesan lain
+        // (mis. pesan hasil forward yang berbagi fileUrl yang sama).
         if (message.fileUrl && (await countMessageFileReferences(message.fileUrl)) === 0) {
           const filename = message.fileUrl.split('/').pop();
           if (filename) {
@@ -488,6 +535,10 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
     },
   );
 
+  /**
+   * Memvalidasi lalu mengubah status pin sebuah pesan dan menyiarkan hasil
+   * ke seluruh anggota percakapan. Dipakai bersama oleh pin dan unpin.
+   */
   const setMessagePinned = async (
     messageId: string,
     isPinned: boolean,
@@ -578,6 +629,10 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
     void setMessagePinned(parsed.data.messageId, false, callback);
   });
 
+  /**
+   * Memproses star/unstar pesan (privat per user), lalu mengirim konfirmasi
+   * hanya ke user terkait, bukan ke seluruh room.
+   */
   const handleStar = async (
     data: { messageId: string },
     star: boolean,
@@ -665,6 +720,7 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
     void handleStar(data, false, callback);
   });
 
+  // Kelompokkan ulang reaksi pesan lalu siarkan ke seluruh room percakapan.
   const emitReactions = (conversationId: string, messageId: string) =>
     groupReactions(messageId).then((reactions) => {
       io.to(`conversation:${conversationId}`).emit('message:reaction:updated', {
@@ -779,6 +835,12 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
   );
 }
 
+/**
+ * Catch-up delivery saat reconnect: mengubah seluruh status SENT yang
+ * tertunda milik user menjadi DELIVERED, lalu memberi tahu masing-masing
+ * pengirim lewat event message:status. Dipanggil saat socket pertama user
+ * terhubung.
+ */
 export async function catchUpMessageDelivery(io: Server, userId: string) {
   try {
     const pending = await db
