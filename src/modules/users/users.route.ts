@@ -6,7 +6,7 @@
 import { Router } from 'express';
 import { verifyJWT } from '../../middlewares/verifyJWT';
 import { validate } from '../../middlewares/validate';
-import { uploadAvatar } from '../../middlewares/upload';
+import { uploadAvatar, uploadBanner } from '../../middlewares/upload';
 import { validateAndRenameImage } from '../../middlewares/imageValidation';
 import * as validator from './users.validator';
 import * as controller from './users.controller';
@@ -24,6 +24,13 @@ router.put(
   uploadAvatar.single('avatar'),
   validateAndRenameImage,
   controller.uploadAvatar,
+);
+router.put(
+  '/me/banner',
+  verifyJWT,
+  uploadBanner.single('banner'),
+  validateAndRenameImage,
+  controller.uploadBanner,
 );
 router.put(
   '/me/password',

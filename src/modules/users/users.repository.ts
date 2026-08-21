@@ -15,6 +15,7 @@ export const publicUserColumns = {
   fullName: users.fullName,
   bio: users.bio,
   avatarUrl: users.avatarUrl,
+  bannerUrl: users.bannerUrl,
   statusText: users.statusText,
   isOnline: users.isOnline,
   lastSeenAt: users.lastSeenAt,
@@ -47,6 +48,16 @@ export async function updateAvatar(userId: string, avatarUrl: string) {
   const [user] = await db
     .update(users)
     .set({ avatarUrl, updatedAt: new Date() })
+    .where(eq(users.id, userId))
+    .returning(publicUserColumns);
+  return user || null;
+}
+
+/** Menyimpan URL banner baru dan mengembalikan data publik terbaru. */
+export async function updateBanner(userId: string, bannerUrl: string) {
+  const [user] = await db
+    .update(users)
+    .set({ bannerUrl, updatedAt: new Date() })
     .where(eq(users.id, userId))
     .returning(publicUserColumns);
   return user || null;
