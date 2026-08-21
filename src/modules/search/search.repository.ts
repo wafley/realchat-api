@@ -81,6 +81,7 @@ export async function searchUsers(currentUserId: string, q: string, limit = 50) 
       and(
         ne(users.id, currentUserId),
         eq(users.isVerified, true),
+        isNull(users.deletedAt),
         or(ilike(users.username, pattern), ilike(users.fullName, pattern))!,
         noBlockRelation,
       ),

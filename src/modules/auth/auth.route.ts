@@ -29,6 +29,12 @@ router.post(
   validate(validator.verifyEmailSchema),
   controller.verifyEmail,
 );
-router.delete('/me', verifyJWT, validate(validator.deleteAccountSchema), controller.deleteAccount);
+router.delete(
+  '/me',
+  verifyJWT,
+  authRateLimiter,
+  validate(validator.deleteAccountSchema),
+  controller.deleteAccount,
+);
 
 export default router;

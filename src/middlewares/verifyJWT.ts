@@ -32,12 +32,16 @@ export async function verifyJWT(req: AuthRequest, res: Response, next: NextFunct
     }
 
     const [user] = await db
-      .select({ isVerified: users.isVerified, tokenVersion: users.tokenVersion })
+      .select({
+        isVerified: users.isVerified,
+        tokenVersion: users.tokenVersion,
+        deletedAt: users.deletedAt,
+      })
       .from(users)
       .where(eq(users.id, decoded.userId))
       .limit(1);
 
-    if (!user) {
+    if (!user || user.deletedAt) {
       res.status(401).json({ success: false, message: 'User not found' });
       return;
     }

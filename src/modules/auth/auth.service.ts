@@ -60,7 +60,7 @@ export async function register(data: {
 
 export async function login(email: string, password: string) {
   const user = await repository.findUserByEmail(email.toLowerCase());
-  if (!user) {
+  if (!user || user.deletedAt) {
     throw new UnauthorizedError('Invalid email or password');
   }
 
@@ -141,7 +141,7 @@ export async function refresh(oldRefreshToken: string) {
   }
 
   const user = await repository.findUserById(row.userId);
-  if (!user) {
+  if (!user || user.deletedAt) {
     throw new UnauthorizedError('Invalid or expired refresh token');
   }
 
