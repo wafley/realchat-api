@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { verifyJWT } from '../../middlewares/verifyJWT';
 import { validate } from '../../middlewares/validate';
 import { authRateLimiter, refreshRateLimiter } from '../../middlewares/rateLimiter';
 import * as validator from './auth.validator';
@@ -27,6 +28,13 @@ router.post(
   authRateLimiter,
   validate(validator.verifyEmailSchema),
   controller.verifyEmail,
+);
+router.delete(
+  '/me',
+  verifyJWT,
+  authRateLimiter,
+  validate(validator.deleteAccountSchema),
+  controller.deleteAccount,
 );
 
 export default router;

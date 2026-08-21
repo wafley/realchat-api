@@ -1,12 +1,21 @@
 import * as repository from './auth.repository';
+import * as conversationService from '../conversations/conversations.service';
 import { hashPassword, comparePassword } from '../../utils/hashPassword';
 import { generateAccessToken, generateRefreshToken } from '../../utils/generateToken';
 import { sendVerificationEmail, sendResetPasswordEmail } from '../../utils/sendEmail';
-import { ConflictError, UnauthorizedError, BadRequestError } from '../../utils/errors';
+import {
+  ConflictError,
+  UnauthorizedError,
+  BadRequestError,
+  NotFoundError,
+  ForbiddenError,
+} from '../../utils/errors';
+import { unlinkQuietly } from '../../utils/cleanup';
 import { env } from '../../config/env';
 import { getIO } from '../../socket/index';
 import jwt from 'jsonwebtoken';
 import crypto, { randomUUID } from 'crypto';
+import path from 'path';
 
 export async function register(data: {
   username: string;
@@ -51,7 +60,7 @@ export async function register(data: {
 
 export async function login(email: string, password: string) {
   const user = await repository.findUserByEmail(email.toLowerCase());
-  if (!user) {
+  if (!user || user.deletedAt) {
     throw new UnauthorizedError('Invalid email or password');
   }
 
@@ -132,7 +141,7 @@ export async function refresh(oldRefreshToken: string) {
   }
 
   const user = await repository.findUserById(row.userId);
-  if (!user) {
+  if (!user || user.deletedAt) {
     throw new UnauthorizedError('Invalid or expired refresh token');
   }
 
@@ -195,4 +204,39 @@ export async function verifyEmail(token: string) {
 
   await repository.updateVerifiedStatus(user.id);
   await repository.clearVerificationToken(user.id);
+}
+
+export async function deleteAccount(userId: string, password: string) {
+  const user = await repository.findUserById(userId);
+  if (!user || user.deletedAt) {
+    throw new NotFoundError('User not found');
+  }
+
+  const valid = await comparePassword(password, user.passwordHash);
+  if (!valid) {
+    throw new ForbiddenError('Password is incorrect');
+  }
+
+  const conversationIds = await repository.findUserConversationIds(userId);
+  for (const conversationId of conversationIds) {
+    await conversationService.leaveConversation(userId, conversationId).catch(() => undefined);
+  }
+
+  const strippedId = userId.replace(/-/g, '');
+  await repository.anonymizeUser(userId, {
+    username: `deleted_${strippedId.slice(0, 20)}`,
+    email: `deleted.${strippedId}@deleted.local`,
+    passwordHash: await hashPassword(crypto.randomBytes(32).toString('hex')),
+  });
+
+  await repository.deleteUserRefreshTokens(userId);
+
+  if (user.avatarUrl) {
+    const filename = user.avatarUrl.split('/').pop();
+    if (filename) {
+      await unlinkQuietly(path.join(env.uploadDir, filename));
+    }
+  }
+
+  getIO().in(`user:${userId}`).disconnectSockets(true);
 }

@@ -129,7 +129,7 @@ export async function updateProfile(
 
 export async function getUserById(viewerId: string, targetId: string) {
   const user = await findUserById(targetId);
-  if (!user) throw new NotFoundError('User not found');
+  if (!user || user.deletedAt) throw new NotFoundError('User not found');
 
   const presenceHidden =
     viewerId !== targetId && (await blockedRepository.hasBlockRelation(viewerId, targetId));
