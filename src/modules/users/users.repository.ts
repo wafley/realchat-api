@@ -5,7 +5,7 @@
 import db from '../../db/index';
 import { users } from '../../db/schema/users';
 import { refreshTokens } from '../../db/schema/refreshTokens';
-import { eq, sql } from 'drizzle-orm';
+import { eq, sql, inArray } from 'drizzle-orm';
 
 /** Daftar kolom pengguna yang aman untuk dikirim ke klien (tanpa hash password). */
 export const publicUserColumns = {
@@ -62,6 +62,18 @@ export async function findPrivacySettings(userId: string) {
     .from(users)
     .where(eq(users.id, userId));
   return row || null;
+}
+
+/**
+ * Mengambil setting visibilitas last seen banyak pengguna sekaligus
+ * (satu query) untuk penyaringan kehadiran pada daftar.
+ */
+export async function findPresenceTargets(userIds: string[]) {
+  if (userIds.length === 0) return [];
+  return db
+    .select({ id: users.id, lastSeenVisibility: users.lastSeenVisibility })
+    .from(users)
+    .where(inArray(users.id, userIds));
 }
 
 /**

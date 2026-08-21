@@ -5,10 +5,31 @@
  */
 import * as repository from './search.repository';
 import { ForbiddenError } from '../../utils/errors';
+import { findPresenceTargets } from '../users/users.repository';
+import { filterVisiblePresenceIds } from '../users/presencePrivacy';
 
-/** Mencari user berdasarkan kata kunci, mengabaikan diri sendiri. */
+/**
+ * Mencari user berdasarkan kata kunci, mengabaikan diri sendiri. Kehadiran
+ * (isOnline/lastSeenAt) pada hasil disaring sesuai kebijakan privasi tiap
+ * user yang ditemukan.
+ */
 export async function searchUsers(currentUserId: string, q: string, limit = 50) {
-  return repository.searchUsers(currentUserId, q, limit);
+  const rows = await repository.searchUsers(currentUserId, q, limit);
+
+  // Saring kehadiran hasil pencarian berdasarkan kebijakan privasi masing-masing.
+  const targetMap = new Map(
+    (await findPresenceTargets(rows.map((r) => r.id))).map((t) => [t.id, t]),
+  );
+  const visibleIds = await filterVisiblePresenceIds(currentUserId, targetMap);
+
+  return rows.map((row) => {
+    const presenceHidden = !visibleIds.has(row.id);
+    return {
+      ...row,
+      isOnline: presenceHidden ? null : row.isOnline,
+      lastSeenAt: presenceHidden ? null : row.lastSeenAt,
+    };
+  });
 }
 
 /**
