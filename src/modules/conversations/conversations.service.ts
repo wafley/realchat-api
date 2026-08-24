@@ -64,6 +64,37 @@ export async function createConversation(userId: string, data: { participantId: 
   return conversation;
 }
 
+/**
+ * Rekap status bacaan awal satu pesan baru dari status para penerima,
+ * memakai semantik yang sama dengan agregasi getMessages: SEEN hanya bila
+ * semua penerima SEEN, DELIVERED bila minimal satu, selainnya SENT.
+ * Hasilnya dilekatkan pada ack/broadcast/respons pengiriman agar pengirim
+ * langsung tahu centang yang benar tanpa menunggu event berikutnya.
+ */
+export function buildInitialReceipt(
+  recipientStatuses: { status: 'SENT' | 'DELIVERED' | 'SEEN'; seenAt?: Date | null }[],
+): { status: 'SENT' | 'DELIVERED' | 'SEEN'; seenAt: string | null } {
+  const rankOf = (status: string) => (status === 'SEEN' ? 2 : status === 'DELIVERED' ? 1 : 0);
+  const ranks = recipientStatuses.map((row) => rankOf(row.status));
+  // Percakapan selalu punya minimal satu anggota lain; guard hanya jaga-jaga.
+  if (ranks.length === 0) return { status: 'SENT', seenAt: null };
+  const minRank = Math.min(...ranks);
+  const maxRank = Math.max(...ranks);
+  if (maxRank < 1) return { status: 'SENT', seenAt: null };
+  if (minRank >= 2) {
+    const seenTimes = recipientStatuses
+      .map((row) => row.seenAt)
+      .filter((seenAt): seenAt is Date => seenAt instanceof Date);
+    // Jaga-jaga bila ada baris SEEN tanpa timestamp: pakai waktu sekarang.
+    const lastSeen =
+      seenTimes.length > 0
+        ? seenTimes.reduce((acc, cur) => (cur > acc ? cur : acc), seenTimes[0])
+        : new Date();
+    return { status: 'SEEN', seenAt: lastSeen.toISOString() };
+  }
+  return { status: 'DELIVERED', seenAt: null };
+}
+
 export async function sendAttachmentMessage(
   userId: string,
   conversationId: string,
@@ -150,11 +181,15 @@ export async function sendAttachmentMessage(
       ...recipientRows.map((row) => row.userId),
     ]);
 
-    // Tidak ada emit message:status awal: status terbawa pada respons REST
-    // dan broadcast message:new; event agregat menyusul saat berubah.
-
+    // Tidak ada emit message:status awal; rekap status awal dilekatkan ke
+    // payload di bawah sehingga respons REST dan broadcast message:new
+    // sudah membawa centang yang benar sejak detik pertama.
     const senderUser = await findUserById(userId);
-    const messagePayload = { ...message, sender: toSender(senderUser) };
+    const messagePayload = {
+      ...message,
+      sender: toSender(senderUser),
+      ...buildInitialReceipt(recipientRows),
+    };
 
     getIO().to(`conversation:${conversationId}`).emit('message:new', messagePayload);
 
@@ -699,11 +734,15 @@ export async function forwardMessage(
     recipientRows,
   );
 
-  // Tidak ada emit message:status awal: status terbawa pada respons REST
-  // forward dan broadcast message:new; event agregat menyusul saat berubah.
-
+  // Tidak ada emit message:status awal; rekap status awal dilekatkan ke
+  // payload di bawah sehingga respons REST dan broadcast message:new
+  // sudah membawa centang yang benar sejak detik pertama.
   const senderUser = await findUserById(userId);
-  const createdPayload = { ...created, sender: toSender(senderUser) };
+  const createdPayload = {
+    ...created,
+    sender: toSender(senderUser),
+    ...buildInitialReceipt(recipientRows),
+  };
 
   getIO().to(`conversation:${targetConversationId}`).emit('message:new', createdPayload);
 
