@@ -23,6 +23,7 @@ import { NotFoundError, BadRequestError, ForbiddenError } from '../../utils/erro
 import { getIO } from '../../socket/index';
 import { forceLeaveConversationRoom } from '../../socket/room';
 import { createAndEmitMany } from '../notifications/notifications.service';
+import { findGroupInviteOptOuts } from '../users/users.repository';
 import { MAX_GROUP_MEMBERS } from '../../config/constants';
 import { env } from '../../config/env';
 import { unlinkQuietly } from '../../utils/cleanup';
@@ -179,10 +180,12 @@ export async function createGroup(
     actor,
   );
 
-  // Undangan grup untuk semua partisipan kecuali pembuat.
+  // Undangan grup untuk semua partisipan kecuali pembuat; penerima yang
+  // mematikan notifikasi undangan tetap masuk grup tanpa notifikasi.
+  const inviteOptOuts = await findGroupInviteOptOuts(allIds.filter((id) => id !== userId));
   await createAndEmitMany(
     allIds
-      .filter((id) => id !== userId)
+      .filter((id) => id !== userId && !inviteOptOuts.has(id))
       .map((id) => ({
         userId: id,
         type: 'group_invite',
@@ -307,15 +310,20 @@ export async function addMembers(userId: string, groupId: string, userIds: strin
     actor,
   );
 
+  // Notifikasi "ditambahkan ke grup" dilewati bagi penerima yang
+  // mematikan notifikasi undangan; keanggotaan tetap berlaku.
+  const addOptOuts = await findGroupInviteOptOuts(addedIds);
   await createAndEmitMany(
-    addedIds.map((id) => ({
-      userId: id,
-      type: 'group_invite',
-      actorId: userId,
-      conversationId: groupId,
-      title: 'Grup Baru',
-      body: `@${actor?.username || 'Someone'} menambahkan Anda ke grup "${conversation.name || ''}"`,
-    })),
+    addedIds
+      .filter((id) => !addOptOuts.has(id))
+      .map((id) => ({
+        userId: id,
+        type: 'group_invite',
+        actorId: userId,
+        conversationId: groupId,
+        title: 'Grup Baru',
+        body: `@${actor?.username || 'Someone'} menambahkan Anda ke grup "${conversation.name || ''}"`,
+      })),
   );
 
   // Masukkan socket anggota baru ke room grup.

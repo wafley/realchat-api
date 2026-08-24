@@ -103,7 +103,9 @@ export async function searchUsers(currentUserId: string, q: string, limit = 50) 
         noBlockRelation,
       ),
     )
-    .orderBy(desc(users.isOnline), users.username)
+    // Urutkan hanya berdasarkan username: mengurutkan berdasarkan isOnline
+    // akan membocorkan status kehadiran pengguna yang menyembunyikannya.
+    .orderBy(users.username)
     .limit(limit);
   return rows;
 }

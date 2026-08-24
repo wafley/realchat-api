@@ -57,3 +57,14 @@ export const updatePrivacySchema = z
     groupInvitePolicy: privacyVisibilitySchema.optional(),
   })
   .strict();
+
+/**
+ * Skema pembaruan preferensi notifikasi: kedua field opsional agar bisa
+ * diubah parsial; harus boolean ketat dan field asing ditolak.
+ */
+export const updateNotificationPreferencesSchema = z
+  .object({
+    notifyNewMessages: z.boolean().optional(),
+    notifyGroupInvites: z.boolean().optional(),
+  })
+  .strict();

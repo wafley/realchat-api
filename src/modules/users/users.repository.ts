@@ -5,7 +5,7 @@
 import db from '../../db/index';
 import { users } from '../../db/schema/users';
 import { refreshTokens } from '../../db/schema/refreshTokens';
-import { eq, sql, inArray } from 'drizzle-orm';
+import { eq, sql, inArray, and } from 'drizzle-orm';
 
 /** Daftar kolom pengguna yang aman untuk dikirim ke klien (tanpa hash password). */
 export const publicUserColumns = {
@@ -75,6 +75,18 @@ export async function findPrivacySettings(userId: string) {
   return row || null;
 }
 
+/** Mengambil preferensi notifikasi pengguna; null jika pengguna tidak ada. */
+export async function findNotificationPreferences(userId: string) {
+  const [row] = await db
+    .select({
+      notifyNewMessages: users.notifyNewMessages,
+      notifyGroupInvites: users.notifyGroupInvites,
+    })
+    .from(users)
+    .where(eq(users.id, userId));
+  return row || null;
+}
+
 /**
  * Mengambil setting visibilitas last seen banyak pengguna sekaligus
  * (satu query) untuk penyaringan kehadiran pada daftar.
@@ -85,6 +97,32 @@ export async function findPresenceTargets(userIds: string[]) {
     .select({ id: users.id, lastSeenVisibility: users.lastSeenVisibility })
     .from(users)
     .where(inArray(users.id, userIds));
+}
+
+/**
+ * Kumpulan ID pengguna yang mematikan push pesan masuk (notifyNewMessages
+ * = false); satu query untuk seluruh kandidat penerima.
+ */
+export async function findNewMessageOptOuts(userIds: string[]) {
+  if (userIds.length === 0) return new Set<string>();
+  const rows = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(and(inArray(users.id, userIds), eq(users.notifyNewMessages, false)));
+  return new Set(rows.map((r) => r.id));
+}
+
+/**
+ * Kumpulan ID pengguna yang mematikan notifikasi undangan grup
+ * (notifyGroupInvites = false); satu query untuk seluruh kandidat.
+ */
+export async function findGroupInviteOptOuts(userIds: string[]) {
+  if (userIds.length === 0) return new Set<string>();
+  const rows = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(and(inArray(users.id, userIds), eq(users.notifyGroupInvites, false)));
+  return new Set(rows.map((r) => r.id));
 }
 
 /**
@@ -102,6 +140,25 @@ export async function updatePrivacySettings(
     .returning({
       lastSeenVisibility: users.lastSeenVisibility,
       groupInvitePolicy: users.groupInvitePolicy,
+    });
+  return row || null;
+}
+
+/**
+ * Memperbarui sebagian preferensi notifikasi dan mengembalikan nilai terbaru.
+ * Hanya field yang dikirim yang berubah.
+ */
+export async function updateNotificationPreferences(
+  userId: string,
+  data: { notifyNewMessages?: boolean; notifyGroupInvites?: boolean },
+) {
+  const [row] = await db
+    .update(users)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(users.id, userId))
+    .returning({
+      notifyNewMessages: users.notifyNewMessages,
+      notifyGroupInvites: users.notifyGroupInvites,
     });
   return row || null;
 }

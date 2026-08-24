@@ -1,11 +1,12 @@
 /**
  * Layanan logika bisnis perangkat: registrasi/penghapusan token FCM milik user
  * dan fan-out push notification untuk pesan masuk dengan menyaring penerima
- * yang memblokir pengirim atau sedang dalam mode mute.
+ * yang memblokir pengirim, sedang mode mute, atau mematikan notifikasi pesan.
  */
 import * as repository from './devices.repository';
 import { sendPush, messagePreview } from './fcm.service';
 import { getBlockRelationUserIds } from '../users/blockedUsers.repository';
+import { findNewMessageOptOuts } from '../users/users.repository';
 
 // Batas jumlah token per user; token terlama akan dipangkas saat registrasi baru.
 const MAX_DEVICE_TOKENS_PER_USER = 10;
@@ -52,12 +53,15 @@ export async function sendIncomingPush(options: {
 }) {
   try {
     // Saring penerima: buang pengirim, user yang saling memblokir dengan
-    // pengirim, dan user yang masih dalam masa mute (mutedUntil di masa depan).
+    // pengirim, user yang masih dalam masa mute (mutedUntil di masa depan),
+    // dan user yang mematikan push pesan masuk lewat preferensi notifikasi.
     const blockedWithSender = new Set(await getBlockRelationUserIds(options.senderId));
+    const optedOut = await findNewMessageOptOuts(options.targets.map((t) => t.userId));
     const recipients = options.targets.filter(
       (t) =>
         t.userId !== options.senderId &&
         !blockedWithSender.has(t.userId) &&
+        !optedOut.has(t.userId) &&
         (!t.mutedUntil || t.mutedUntil.getTime() <= Date.now()),
     );
     if (recipients.length === 0) return;
