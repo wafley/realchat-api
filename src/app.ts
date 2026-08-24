@@ -34,6 +34,11 @@ const UPLOAD_EXTENSIONS = ALLOWED_MESSAGE_EXTENSIONS;
 
 // Penyajian file upload: tolak ekstensi di luar whitelist (404) sebelum
 // static handler, dan set nosniff agar browser tidak menebak tipe konten.
+// CORP sengaja dilonggarkan menjadi cross-origin hanya untuk file statis:
+// UI mobile (Capacitor WebView) berjalan dari origin http://localhost dan
+// memuat gambar dari origin backend, sehingga default helmet same-origin
+// membuat gambar gagal tampil di Android WebView. Endpoint API tetap
+// menggunakan default helmet.
 app.use(
   '/uploads',
   (req: Request, res: Response, next: NextFunction) => {
@@ -48,6 +53,9 @@ app.use(
     index: false,
     setHeaders: (res) => {
       res.setHeader('X-Content-Type-Options', 'nosniff');
+      // File upload bersifat publik (tanpa auth), sehingga pelonggaran ini
+      // tidak mengekspos data tambahan; hanya memungkinkan hotlinking.
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     },
   }),
 );
