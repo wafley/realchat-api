@@ -609,6 +609,31 @@ export async function markConversationAsRead(
 }
 
 /**
+ * Daftar pembaca satu pesan untuk modal "Seen by": seluruh anggota
+ * non-pengirim beserta status bacaannya. Pesan harus ada di percakapan.
+ * @throws NotFoundError jika percakapan/pesan tidak ditemukan
+ * @throws ForbiddenError jika peminta bukan anggota percakapan
+ */
+export async function getMessageReaders(userId: string, conversationId: string, messageId: string) {
+  const conversation = await repository.findConversationById(conversationId);
+  if (!conversation) throw new NotFoundError('Conversation not found');
+
+  const member = await repository.isMember(conversationId, userId);
+  if (!member) throw new ForbiddenError('You are not a member of this conversation');
+
+  const message = await repository.findMessageById(messageId);
+  if (!message || message.conversationId !== conversationId) {
+    throw new NotFoundError('Message not found in this conversation');
+  }
+
+  const readers = await repository.findMessageReaders(messageId);
+  return readers.map((row) => ({
+    ...row,
+    seenAt: row.seenAt ? row.seenAt.toISOString() : null,
+  }));
+}
+
+/**
  * Teruskan pesan ke percakapan tujuan sebagai pesan baru: konten dan
  * metadata berkas disalin (fileUrl dipakai ulang, bukan dipindah),
  * lengkap dengan status penerima, event realtime, dan push notifikasi.

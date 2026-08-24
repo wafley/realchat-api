@@ -251,6 +251,17 @@ export async function unstarMessage(req: AuthRequest, res: Response, next: NextF
   }
 }
 
+/** Daftar pembaca satu pesan untuk modal "Seen by". */
+export async function getMessageReaders(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const { id, messageId } = messageIdSchema.parse(req.params);
+    const result = await conversationService.getMessageReaders(req.userId!, id, messageId);
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
 /** Daftar seluruh pesan berbintang milik pengguna. */
 export async function getStarredMessages(req: AuthRequest, res: Response, next: NextFunction) {
   try {
