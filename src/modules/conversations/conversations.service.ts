@@ -150,19 +150,8 @@ export async function sendAttachmentMessage(
       ...recipientRows.map((row) => row.userId),
     ]);
 
-    for (const row of recipientRows) {
-      // Emit status awal ke pengirim agar UI-nya sinkron seketika.
-      if (row.status === 'DELIVERED' || row.status === 'SEEN') {
-        getIO()
-          .to(`user:${userId}`)
-          .emit('message:status', {
-            messageId: message.id,
-            status: row.status,
-            userId: row.userId,
-            seenAt: row.status === 'SEEN' ? now.toISOString() : null,
-          });
-      }
-    }
+    // Tidak ada emit message:status awal: status terbawa pada respons REST
+    // dan broadcast message:new; event agregat menyusul saat berubah.
 
     const senderUser = await findUserById(userId);
     const messagePayload = { ...message, sender: toSender(senderUser) };
@@ -420,7 +409,8 @@ export async function getMessages(
 
   const messages = messagesList.map(
     ({
-      statusRank,
+      minRank,
+      maxRank,
       seenAt,
       starredAt,
       senderUsername,
@@ -429,9 +419,15 @@ export async function getMessages(
       ...message
     }) => ({
       ...message,
-      // Rank agregat dikonversi ke label status yang dikonsumsi klien.
+      // Semantik centang ala WhatsApp: SEEN hanya bila semua penerima
+      // membaca (MIN=2), DELIVERED bila minimal satu menerima (MAX>=1).
+      // Untuk pesan masuk, kedua rank = status milik pembaca sendiri.
       status:
-        statusRank == null || statusRank < 1 ? 'SENT' : statusRank >= 2 ? 'SEEN' : 'DELIVERED',
+        maxRank == null || maxRank < 1
+          ? 'SENT'
+          : minRank != null && minRank >= 2
+            ? 'SEEN'
+            : 'DELIVERED',
       seenAt: seenAt ? seenAt.toISOString() : null,
       starredAt: starredAt ? starredAt.toISOString() : null,
       sender: {
@@ -568,8 +564,9 @@ export async function setMessagePinned(
 }
 
 /**
- * Tandai pesan masuk percakapan sebagai SEEN dan kirim event status
- * ke masing-masing pengirim.
+ * Tandai pesan masuk percakapan sebagai SEEN. Event SEEN agregat ke
+ * pengirim hanya dikirim saat pembaca ini adalah yang TERAKHIR —
+ * semantik centang biru ala WhatsApp untuk percakapan grup.
  * @param options.before Cutoff opsional: hanya pesan dengan createdAt
  *   <= waktu tsb yang ditandai (sinkronisasi SEEN dari klien)
  */
@@ -595,18 +592,45 @@ export async function markConversationAsRead(
   const changedIds = await repository.markMessagesSeen(userId, targetIds, now);
 
   if (changedIds.length > 0) {
-    const senders = await repository.findMessageSenders(changedIds);
-    for (const { id, senderId } of senders) {
-      getIO().to(`user:${senderId}`).emit('message:status', {
-        messageId: id,
-        status: 'SEEN',
-        userId,
-        seenAt: now.toISOString(),
-      });
+    // Event agregat tanpa userId; seenAt = momen pesan lunas dibaca semua.
+    const completion = await repository.findMessageReadCompletion(changedIds);
+    for (const row of completion) {
+      if (row.seenOthers >= row.otherMembers && row.otherMembers > 0) {
+        getIO().to(`user:${row.senderId}`).emit('message:status', {
+          messageId: row.messageId,
+          status: 'SEEN',
+          seenAt: now.toISOString(),
+        });
+      }
     }
   }
 
   return { updated: changedIds.length, seenAt: now.toISOString() };
+}
+
+/**
+ * Daftar pembaca satu pesan untuk modal "Seen by": seluruh anggota
+ * non-pengirim beserta status bacaannya. Pesan harus ada di percakapan.
+ * @throws NotFoundError jika percakapan/pesan tidak ditemukan
+ * @throws ForbiddenError jika peminta bukan anggota percakapan
+ */
+export async function getMessageReaders(userId: string, conversationId: string, messageId: string) {
+  const conversation = await repository.findConversationById(conversationId);
+  if (!conversation) throw new NotFoundError('Conversation not found');
+
+  const member = await repository.isMember(conversationId, userId);
+  if (!member) throw new ForbiddenError('You are not a member of this conversation');
+
+  const message = await repository.findMessageById(messageId);
+  if (!message || message.conversationId !== conversationId) {
+    throw new NotFoundError('Message not found in this conversation');
+  }
+
+  const readers = await repository.findMessageReaders(messageId);
+  return readers.map((row) => ({
+    ...row,
+    seenAt: row.seenAt ? row.seenAt.toISOString() : null,
+  }));
 }
 
 /**
@@ -675,18 +699,8 @@ export async function forwardMessage(
     recipientRows,
   );
 
-  for (const row of recipientRows) {
-    if (row.status === 'DELIVERED' || row.status === 'SEEN') {
-      getIO()
-        .to(`user:${userId}`)
-        .emit('message:status', {
-          messageId: created.id,
-          status: row.status,
-          userId: row.userId,
-          seenAt: row.status === 'SEEN' ? now.toISOString() : null,
-        });
-    }
-  }
+  // Tidak ada emit message:status awal: status terbawa pada respons REST
+  // forward dan broadcast message:new; event agregat menyusul saat berubah.
 
   const senderUser = await findUserById(userId);
   const createdPayload = { ...created, sender: toSender(senderUser) };

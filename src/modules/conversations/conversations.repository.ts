@@ -695,20 +695,29 @@ export async function findMessagesByConversationId(
       sql`(${messages.createdAt}, ${messages.id}) < (${cursor.sortKey}::timestamptz, ${cursor.id}::uuid)`,
     );
 
-  // Agregat status seluruh penerima per pesan: rank maksimum menentukan
-  // status gabungan (0=SENT, 1=DELIVERED, 2=SEEN).
+  // Agregat status seluruh PENERIMA per pesan; baris milik pengirim
+  // dikecualikan karena selalu SENT dan akan merusak perhitungan MIN.
+  // Semantik centang ala WhatsApp: SEEN hanya bila semua penerima membaca
+  // (MIN=2), DELIVERED bila minimal satu menerima (MAX>=1). seenAt memakai
+  // MAX = waktu pembaca terakhir (momen pesan "lunas dibaca").
   const statusAgg = db
     .select({
       messageId: messageStatus.messageId,
-      statusRank:
-        sql<number>`MAX(CASE ${messageStatus.status} WHEN 'SEEN' THEN 2 WHEN 'DELIVERED' THEN 1 ELSE 0 END)`.as(
-          'status_rank',
+      minRank:
+        sql<number>`MIN(CASE ${messageStatus.status} WHEN 'SEEN' THEN 2 WHEN 'DELIVERED' THEN 1 ELSE 0 END)`.as(
+          'min_rank',
         ),
-      seenAt: sql<Date | null>`MIN(${messageStatus.seenAt})`
+      maxRank:
+        sql<number>`MAX(CASE ${messageStatus.status} WHEN 'SEEN' THEN 2 WHEN 'DELIVERED' THEN 1 ELSE 0 END)`.as(
+          'max_rank',
+        ),
+      seenAt: sql<Date | null>`MAX(${messageStatus.seenAt})`
         .mapWith((v: unknown) => (v === null || v === undefined ? null : new Date(v as string)))
         .as('seen_at'),
     })
     .from(messageStatus)
+    .innerJoin(messages, eq(messages.id, messageStatus.messageId))
+    .where(ne(messageStatus.userId, messages.senderId))
     .groupBy(messageStatus.messageId)
     .as('status_agg');
 
@@ -741,14 +750,19 @@ export async function findMessagesByConversationId(
     : undefined;
 
   // Pengirim melihat agregat seluruh penerima; penerima melihat
-  // status bacaannya sendiri.
+  // status bacaannya sendiri. Untuk penerima, minRank = maxRank =
+  // rank miliknya sehingga pemetaan service seragam untuk keduanya.
   const query = db
     .select({
       ...messageColumns,
-      statusRank:
+      minRank:
         myStatusAgg && userId
-          ? sql<number>`CASE WHEN ${messages.senderId} = ${userId} THEN ${statusAgg.statusRank} ELSE ${myStatusAgg.statusRank} END`
-          : statusAgg.statusRank,
+          ? sql<number>`CASE WHEN ${messages.senderId} = ${userId} THEN ${statusAgg.minRank} ELSE ${myStatusAgg.statusRank} END`
+          : statusAgg.minRank,
+      maxRank:
+        myStatusAgg && userId
+          ? sql<number>`CASE WHEN ${messages.senderId} = ${userId} THEN ${statusAgg.maxRank} ELSE ${myStatusAgg.statusRank} END`
+          : statusAgg.maxRank,
       seenAt:
         myStatusAgg && userId
           ? sql<Date | null>`CASE WHEN ${messages.senderId} = ${userId} THEN ${statusAgg.seenAt} ELSE ${myStatusAgg.seenAt} END`.mapWith(
@@ -1125,14 +1139,62 @@ export async function markMessagesSeen(userId: string, messageIds: string[], see
 
   return [...new Set([...updated.map((row) => row.messageId), ...newIds])];
 }
-
-/** Petakan messageId -> senderId untuk emit status ke pengirim. */
-export async function findMessageSenders(messageIds: string[]) {
+/**
+ * Kelengkapan baca per pesan: jumlah anggota lain (non-pengirim) vs yang
+ * sudah SEEN. Dipakai untuk memutuskan kapan event SEEN agregat dikirim
+ * ke pengirim — hanya saat pembaca terakhir melengkapi semua anggota.
+ * Catatan: nama kolom ditulis berkualifikasi eksplisit (alias cm/ms) karena
+ * interpolasi kolom Drizzle di subquery korup dirender tanpa kualifikasi
+ * sehingga salah resolusi terhadap tabel luar.
+ */
+export async function findMessageReadCompletion(messageIds: string[]) {
   if (messageIds.length === 0) return [];
   return db
-    .select({ id: messages.id, senderId: messages.senderId })
+    .select({
+      messageId: messages.id,
+      senderId: messages.senderId,
+      otherMembers: sql<number>`(
+          SELECT COUNT(*) FROM conversation_members cm
+          WHERE cm.conversation_id = messages.conversation_id
+            AND cm.user_id <> messages.sender_id
+        )`
+        .mapWith(Number)
+        .as('other_members'),
+      seenOthers: sql<number>`(
+          SELECT COUNT(*) FROM message_status ms
+          WHERE ms.message_id = messages.id
+            AND ms.user_id <> messages.sender_id
+            AND ms.status = 'SEEN'
+        )`
+        .mapWith(Number)
+        .as('seen_others'),
+    })
     .from(messages)
     .where(inArray(messages.id, messageIds));
+}
+/**
+ * Daftar pembaca satu pesan (modal "Seen by"): seluruh baris status
+ * non-pengirim beserta data publiknya. Urutan: SEEN (seenAt naik) ->
+ * DELIVERED -> SENT; NULLS LAST membuat yang belum membaca berada di bawah.
+ */
+export async function findMessageReaders(messageId: string) {
+  return db
+    .select({
+      userId: users.id,
+      username: users.username,
+      fullName: users.fullName,
+      avatarUrl: users.avatarUrl,
+      status: messageStatus.status,
+      seenAt: messageStatus.seenAt,
+    })
+    .from(messageStatus)
+    .innerJoin(users, eq(users.id, messageStatus.userId))
+    .innerJoin(messages, eq(messages.id, messageStatus.messageId))
+    .where(and(eq(messages.id, messageId), ne(messageStatus.userId, messages.senderId)))
+    .orderBy(
+      sql`CASE ${messageStatus.status} WHEN 'SEEN' THEN 1 WHEN 'DELIVERED' THEN 2 ELSE 3 END`,
+      sql`${messageStatus.seenAt} ASC`,
+    );
 }
 
 /** Tambah bintang pesan untuk pengguna; abaikan bila sudah ada. */

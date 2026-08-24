@@ -26,6 +26,7 @@ import {
   addStar,
   removeStar,
   countMessageFileReferences,
+  findMessageReadCompletion,
 } from '../../modules/conversations/conversations.repository';
 import { findUserById, findUserIdsByUsernames } from '../../modules/auth/auth.repository';
 import {
@@ -250,17 +251,9 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
           return { message, members, recipientRows };
         });
 
-        // Kabari pengirim jika pesannya sudah langsung DELIVERED/SEEN.
-        for (const row of recipientRows) {
-          if (row.status === 'DELIVERED' || row.status === 'SEEN') {
-            io.to(`user:${userId}`).emit('message:status', {
-              messageId: message.id,
-              status: row.status,
-              userId: row.userId,
-              seenAt: row.status === 'SEEN' ? now.toISOString() : null,
-            });
-          }
-        }
+        // Tidak ada emit message:status awal: status terbawa pada ack
+        // message:send dan broadcast message:new; event agregat menyusul
+        // saat status berubah (mis. SEEN lengkap dari mark-as-read).
 
         const senderUser = await findUserById(userId);
         const messagePayload = { ...message, sender: toSender(senderUser) };
@@ -444,19 +437,18 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
         const changedIds = [...new Set([...updated.map((row) => row.messageId), ...newIds])];
         const seenAt = now.toISOString();
 
+        // Event SEEN agregat hanya saat pembaca ini melengkapi semua
+        // anggota lain (semantik centang biru ala WhatsApp).
         if (changedIds.length > 0) {
-          const senders = await db
-            .select({ id: messages.id, senderId: messages.senderId })
-            .from(messages)
-            .where(inArray(messages.id, changedIds));
-
-          for (const { id, senderId } of senders) {
-            io.to(`user:${senderId}`).emit('message:status', {
-              messageId: id,
-              status: 'SEEN',
-              userId,
-              seenAt,
-            });
+          const completion = await findMessageReadCompletion(changedIds);
+          for (const row of completion) {
+            if (row.seenOthers >= row.otherMembers && row.otherMembers > 0) {
+              io.to(`user:${row.senderId}`).emit('message:status', {
+                messageId: row.messageId,
+                status: 'SEEN',
+                seenAt,
+              });
+            }
           }
         }
 
@@ -837,8 +829,9 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
 
 /**
  * Catch-up delivery saat reconnect: mengubah seluruh status SENT yang
- * tertunda milik user menjadi DELIVERED, lalu memberi tahu masing-masing
- * pengirim lewat event message:status. Dipanggil saat socket pertama user
+ * tertunda milik user menjadi DELIVERED, lalu memberi tahu pengirim lewat
+ * event message:status agregat (tanpa userId; DELIVERED cukup sekali karena
+ * ambangnya "minimal satu penerima"). Dipanggil saat socket pertama user
  * terhubung.
  */
 export async function catchUpMessageDelivery(io: Server, userId: string) {
@@ -879,7 +872,6 @@ export async function catchUpMessageDelivery(io: Server, userId: string) {
       io.to(`user:${senderId}`).emit('message:status', {
         messageId,
         status: 'DELIVERED',
-        userId,
         seenAt: null,
       });
     }

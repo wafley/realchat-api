@@ -22,6 +22,7 @@ router.post(
 );
 router.get('/', verifyJWT, controller.getConversations);
 router.get('/:id/messages', verifyJWT, controller.getMessages);
+router.get('/:id/messages/:messageId/readers', verifyJWT, controller.getMessageReaders);
 // Alur kirim lampiran: simpan berkas (Multer), validasi gambarnya,
 // lalu validasi body teks sebelum masuk controller.
 router.post(
