@@ -1139,11 +1139,13 @@ export async function markMessagesSeen(userId: string, messageIds: string[], see
 
   return [...new Set([...updated.map((row) => row.messageId), ...newIds])];
 }
-
 /**
  * Kelengkapan baca per pesan: jumlah anggota lain (non-pengirim) vs yang
  * sudah SEEN. Dipakai untuk memutuskan kapan event SEEN agregat dikirim
  * ke pengirim — hanya saat pembaca terakhir melengkapi semua anggota.
+ * Catatan: nama kolom ditulis berkualifikasi eksplisit (alias cm/ms) karena
+ * interpolasi kolom Drizzle di subquery korup dirender tanpa kualifikasi
+ * sehingga salah resolusi terhadap tabel luar.
  */
 export async function findMessageReadCompletion(messageIds: string[]) {
   if (messageIds.length === 0) return [];
@@ -1152,17 +1154,17 @@ export async function findMessageReadCompletion(messageIds: string[]) {
       messageId: messages.id,
       senderId: messages.senderId,
       otherMembers: sql<number>`(
-          SELECT COUNT(*) FROM ${conversationMembers}
-          WHERE ${conversationMembers.conversationId} = ${messages.conversationId}
-            AND ${conversationMembers.userId} <> ${messages.senderId}
+          SELECT COUNT(*) FROM conversation_members cm
+          WHERE cm.conversation_id = messages.conversation_id
+            AND cm.user_id <> messages.sender_id
         )`
         .mapWith(Number)
         .as('other_members'),
       seenOthers: sql<number>`(
-          SELECT COUNT(*) FROM ${messageStatus}
-          WHERE ${messageStatus.messageId} = ${messages.id}
-            AND ${messageStatus.userId} <> ${messages.senderId}
-            AND ${messageStatus.status} = 'SEEN'
+          SELECT COUNT(*) FROM message_status ms
+          WHERE ms.message_id = messages.id
+            AND ms.user_id <> messages.sender_id
+            AND ms.status = 'SEEN'
         )`
         .mapWith(Number)
         .as('seen_others'),
@@ -1170,7 +1172,6 @@ export async function findMessageReadCompletion(messageIds: string[]) {
     .from(messages)
     .where(inArray(messages.id, messageIds));
 }
-
 /**
  * Daftar pembaca satu pesan (modal "Seen by"): seluruh baris status
  * non-pengirim beserta data publiknya. Urutan: SEEN (seenAt naik) ->
