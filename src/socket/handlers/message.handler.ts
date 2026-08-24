@@ -34,6 +34,7 @@ import {
   hasBlockedAnyMember,
 } from '../../modules/users/blockedUsers.repository';
 import { createAndEmitMany } from '../../modules/notifications/notifications.service';
+import { buildInitialReceipt } from '../../modules/conversations/conversations.service';
 import { toSender } from '../../utils/sender';
 import { sendIncomingPush } from '../../modules/devices/devices.service';
 import { env } from '../../config/env';
@@ -251,12 +252,16 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
           return { message, members, recipientRows };
         });
 
-        // Tidak ada emit message:status awal: status terbawa pada ack
-        // message:send dan broadcast message:new; event agregat menyusul
-        // saat status berubah (mis. SEEN lengkap dari mark-as-read).
-
+        // Tidak ada emit message:status awal; rekap status awal dilekatkan
+        // ke payload sehingga ack message:send dan broadcast message:new
+        // sudah membawa centang yang benar sejak detik pertama. Event
+        // agregat menyusul saat status berubah (mis. SEEN lengkap).
         const senderUser = await findUserById(userId);
-        const messagePayload = { ...message, sender: toSender(senderUser) };
+        const messagePayload = {
+          ...message,
+          sender: toSender(senderUser),
+          ...buildInitialReceipt(recipientRows),
+        };
 
         io.to(`conversation:${conversationId}`).emit('message:new', messagePayload);
 
