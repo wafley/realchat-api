@@ -1,3 +1,7 @@
+/**
+ * Skema status pengiriman pesan per penerima (SENT/DELIVERED/SEEN).
+ * Satu baris unik per (messageId, userId) - dasar read receipt.
+ */
 import { pgTable, uuid, varchar, timestamp, unique } from 'drizzle-orm/pg-core';
 import { users } from './users';
 import { messages } from './messages';
@@ -13,7 +17,8 @@ export const messageStatus = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     status: varchar('status', { length: 10 }).notNull().default('SENT'),
-    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+    seenAt: timestamp('seen_at', { withTimezone: true }),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
     unq: unique().on(table.messageId, table.userId),

@@ -43,6 +43,139 @@
       "when": 1785456000000,
       "tag": "0005_gentle_cyclops",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1785600000000,
+      "tag": "0006_purple_phoenix",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1785893394619,
+      "tag": "0007_unusual_colonel_america",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1785903861667,
+      "tag": "0008_medical_nextwave",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1786326642837,
+      "tag": "0009_mute_beyonder",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1786412017696,
+      "tag": "0010_confused_shatterstar",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1786497002079,
+      "tag": "0011_wild_stryfe",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1786518302683,
+      "tag": "0012_fine_the_order",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1786546382783,
+      "tag": "0013_giant_squadron_supreme",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1786778445057,
+      "tag": "0014_glossy_wind_dancer",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1787065762011,
+      "tag": "0015_safe_midnight",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1787122137206,
+      "tag": "0016_fixed_bruce_banner",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1787190593636,
+      "tag": "0017_huge_dragon_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1787190806893,
+      "tag": "0018_green_ricochet",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1787192679628,
+      "tag": "0019_illegal_dakota_north",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1787192917361,
+      "tag": "0020_sudden_colleen_wing",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1787277798159,
+      "tag": "0021_broken_the_enforcers",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1787287575655,
+      "tag": "0022_complete_hitman",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1787298035309,
+      "tag": "0023_cool_hedge_knight",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1787301277244,
+      "tag": "0024_pretty_warbird",
+      "breakpoints": true
     }
   ]
 }

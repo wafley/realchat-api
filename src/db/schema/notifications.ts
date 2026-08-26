@@ -1,8 +1,11 @@
+/**
+ * Skema notifikasi in-app per pengguna (mention, invite grup, pesan masuk, dll).
+ * actorId = pengguna penyebab notifikasi; boleh null untuk notifikasi sistem.
+ */
 import { pgTable, uuid, varchar, text, boolean, timestamp, index } from 'drizzle-orm/pg-core';
 import { users } from './users';
 import { conversations } from './conversations';
 import { messages } from './messages';
-import { friendRequests } from './friendRequests';
 
 export const notifications = pgTable(
   'notifications',
@@ -15,13 +18,10 @@ export const notifications = pgTable(
     actorId: uuid('actor_id').references(() => users.id),
     conversationId: uuid('conversation_id').references(() => conversations.id),
     messageId: uuid('message_id').references(() => messages.id),
-    friendRequestId: uuid('friend_request_id').references(() => friendRequests.id, {
-      onDelete: 'set null',
-    }),
     title: varchar('title', { length: 100 }).notNull(),
     body: text('body').notNull(),
     isRead: boolean('is_read').notNull().default(false),
-    createdAt: timestamp('created_at').notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
     userIdx: index().on(table.userId, table.isRead, table.createdAt),

@@ -1,11 +1,17 @@
 node_modules/
 .env
+dist/
 uploads/**
 !uploads/**/
 !uploads/**/.gitkeep
+*.log
+server_pg.*
+**/firebase-service-account*.json
 
 # Docs
 struktur-taks.md
 informasi.md
 git-commit-roadmap.md
 chatapp_documentation_rapi.md
+POSTMAN_GUIDE.md
+postman_collection.json

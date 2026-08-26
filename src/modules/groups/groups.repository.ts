@@ -1,8 +1,12 @@
+/**
+ * Repository khusus grup: pembaruan metadata percakapan bertipe GROUP.
+ * Operasi anggota/peran yang kompleks ada di conversations.repository.
+ */
 import db from '../../db/index';
 import { conversations } from '../../db/schema/conversations';
-import { conversationMembers } from '../../db/schema/conversationMembers';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
+/** Perbarui nama/deskripsi grup dan kembalikan baris terbarunya. */
 export async function updateGroup(
   id: string,
   data: { name?: string; description?: string | null },
@@ -15,6 +19,7 @@ export async function updateGroup(
   return group || null;
 }
 
+/** Ganti URL avatar grup dan kembalikan baris terbarunya. */
 export async function updateGroupAvatar(id: string, avatarUrl: string) {
   const [group] = await db
     .update(conversations)
@@ -22,31 +27,4 @@ export async function updateGroupAvatar(id: string, avatarUrl: string) {
     .where(eq(conversations.id, id))
     .returning();
   return group || null;
-}
-
-export async function updateMemberRole(conversationId: string, userId: string, role: string) {
-  const [member] = await db
-    .update(conversationMembers)
-    .set({ role })
-    .where(
-      and(
-        eq(conversationMembers.conversationId, conversationId),
-        eq(conversationMembers.userId, userId),
-      ),
-    )
-    .returning();
-  return member || null;
-}
-
-export async function countAdmins(conversationId: string) {
-  const [result] = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(conversationMembers)
-    .where(
-      and(
-        eq(conversationMembers.conversationId, conversationId),
-        eq(conversationMembers.role, 'ADMIN'),
-      ),
-    );
-  return result.count;
 }
