@@ -18,6 +18,7 @@ import { sendIncomingPush } from '../devices/devices.service';
 import { messageRateLimiter } from '../../socket/handlers/message.handler';
 import { unlinkQuietly } from '../../utils/cleanup';
 import { env } from '../../config/env';
+import { notifyConversationMentions } from '../notifications/notifications.service';
 import path from 'path';
 import {
   isBlockedByUser,
@@ -192,6 +193,20 @@ export async function sendAttachmentMessage(
     };
 
     getIO().to(`conversation:${conversationId}`).emit('message:new', messagePayload);
+
+    if (membership.conversationType === 'GROUP') {
+      try {
+        await notifyConversationMentions({
+          conversationId,
+          messageId: message.id,
+          actorId: userId,
+          content,
+          recipients: recipientRows,
+        });
+      } catch {
+        // Kegagalan notifikasi mention tidak boleh menggagalkan pengiriman pesan.
+      }
+    }
 
     // Push notification hanya untuk penerima offline (status SENT).
     const offlineTargets = recipientRows
@@ -745,6 +760,20 @@ export async function forwardMessage(
   };
 
   getIO().to(`conversation:${targetConversationId}`).emit('message:new', createdPayload);
+
+  if (targetConversation?.type === 'GROUP') {
+    try {
+      await notifyConversationMentions({
+        conversationId: targetConversationId,
+        messageId: created.id,
+        actorId: userId,
+        content: message.content,
+        recipients: recipientRows,
+      });
+    } catch {
+      // Kegagalan notifikasi mention tidak boleh menggagalkan operasi forward.
+    }
+  }
 
   const offlineTargets = recipientRows
     .filter((row) => row.status === 'SENT')

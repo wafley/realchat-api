@@ -28,12 +28,12 @@ import {
   countMessageFileReferences,
   findMessageReadCompletion,
 } from '../../modules/conversations/conversations.repository';
-import { findUserById, findUserIdsByUsernames } from '../../modules/auth/auth.repository';
+import { findUserById } from '../../modules/auth/auth.repository';
 import {
   isBlockedByAnyMember,
   hasBlockedAnyMember,
 } from '../../modules/users/blockedUsers.repository';
-import { createAndEmitMany } from '../../modules/notifications/notifications.service';
+import { notifyConversationMentions } from '../../modules/notifications/notifications.service';
 import { buildInitialReceipt } from '../../modules/conversations/conversations.service';
 import { toSender } from '../../utils/sender';
 import { sendIncomingPush } from '../../modules/devices/devices.service';
@@ -42,21 +42,6 @@ import { unlinkQuietly } from '../../utils/cleanup';
 import path from 'path';
 import { createMessageRateLimiter, createFixedWindowLimiter } from '../rateLimit';
 import { computeRecipientStatus } from '../activeViewers';
-
-/**
- * Mengumpulkan username unik yang di-mention dalam teks pesan (mis. `@budi`).
- * Mention valid: di awal kata atau dipisah tanda baca, 3-30 karakter
- * alfanumerik/underscore.
- */
-function extractMentions(content: string): string[] {
-  const tokens = content.match(/(^|[^\w])@([A-Za-z0-9_]{3,30})(?=[\s,.;:!?"')]|$)/g);
-  if (!tokens) return [];
-  const seen = new Set<string>();
-  for (const token of tokens) {
-    seen.add(token.replace(/^[^\w]?@/, ''));
-  }
-  return [...seen];
-}
 
 /**
  * Limiter laju pesan gabungan (per detik + per menit) per user. Dipakai
@@ -267,30 +252,15 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
 
         if (membership.conversationType === 'GROUP') {
           try {
-            const usernames = extractMentions(content);
-            if (usernames.length > 0) {
-              const mentioned = await findUserIdsByUsernames(usernames);
-              if (mentioned.length > 0) {
-                const recipientIdSet = new Set(recipientRows.map((r) => r.userId));
-                const targets = mentioned.filter((m) => recipientIdSet.has(m.id));
-                if (targets.length > 0) {
-                  const sender = await findUserById(userId);
-                  await createAndEmitMany(
-                    targets.map((t) => ({
-                      userId: t.id,
-                      type: 'mention',
-                      actorId: userId,
-                      conversationId,
-                      messageId: message.id,
-                      title: 'Mention',
-                      body: `@${sender?.username || 'Someone'} menyebut Anda`,
-                    })),
-                  );
-                }
-              }
-            }
+            await notifyConversationMentions({
+              conversationId,
+              messageId: message.id,
+              actorId: userId,
+              content,
+              recipients: recipientRows,
+            });
           } catch {
-            // Notification failure must not fail the message send.
+            // Kegagalan notifikasi tidak boleh menggagalkan pengiriman pesan.
           }
         }
 
