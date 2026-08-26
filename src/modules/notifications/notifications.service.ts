@@ -7,6 +7,8 @@ import * as repository from './notifications.repository';
 import type { CreateNotificationData } from './notifications.repository';
 import { NotFoundError, ForbiddenError } from '../../utils/errors';
 import { getIO } from '../../socket/index';
+import { extractMentions } from '../../utils/mentions';
+import { findUserById, findUserIdsByUsernames } from '../auth/auth.repository';
 
 /**
  * Membuat banyak notifikasi sekaligus lalu menyiarkan event 'notification:new'
@@ -27,6 +29,44 @@ export async function createAndEmitMany(items: CreateNotificationData[]) {
 export async function createAndEmit(data: CreateNotificationData) {
   const [notif] = await createAndEmitMany([data]);
   return notif;
+}
+
+/** Parameter untuk pembuatan notifikasi mention ke anggota percakapan. */
+export interface NotifyMentionsParams {
+  conversationId: string;
+  messageId: string;
+  actorId: string;
+  content: string;
+  /** Daftar penerima dengan field userId; dipakai untuk filter anggota target. */
+  recipients: ReadonlyArray<{ userId: string }>;
+}
+
+/**
+ * Memproses @username pada isi pesan lalu membuat notifikasi tipe 'mention'
+ * untuk setiap anggota percakapan yang relevan. Kegagalan notifikasi tidak
+ * boleh menggagalkan operasi pemanggil — pemanggil wajib membungkusnya
+ * dalam blok try/catch tersendiri jika diperlukan.
+ */
+export async function notifyConversationMentions(params: NotifyMentionsParams): Promise<void> {
+  const usernames = extractMentions(params.content);
+  if (usernames.length === 0) return;
+  const mentioned = await findUserIdsByUsernames(usernames);
+  if (mentioned.length === 0) return;
+  const recipientIds = new Set(params.recipients.map((r) => r.userId));
+  const targets = mentioned.filter((m) => recipientIds.has(m.id));
+  if (targets.length === 0) return;
+  const sender = await findUserById(params.actorId);
+  await createAndEmitMany(
+    targets.map((t) => ({
+      userId: t.id,
+      type: 'mention',
+      actorId: params.actorId,
+      conversationId: params.conversationId,
+      messageId: params.messageId,
+      title: 'Mention',
+      body: `@${sender?.username || 'Someone'} menyebut Anda`,
+    })),
+  );
 }
 
 /**
