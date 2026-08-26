@@ -43,8 +43,6 @@ import path from 'path';
 import { createMessageRateLimiter, createFixedWindowLimiter } from '../rateLimit';
 import { computeRecipientStatus } from '../activeViewers';
 
-
-
 /**
  * Limiter laju pesan gabungan (per detik + per menit) per user. Dipakai
  * bersama oleh event message:send dan endpoint REST pengiriman pesan.

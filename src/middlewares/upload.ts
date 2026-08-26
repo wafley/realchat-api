@@ -76,7 +76,7 @@ export const uploadGroupPhoto = createUpload(
   'Only JPEG, PNG, and WebP images are allowed',
 );
 
-/** Middleware upload lampiran pesan (gambar + dokumen, batas env.maxFileSize). */
+/** Middleware upload lampiran pesan (foto + video, batas env.maxFileSize). */
 export const uploadMessageAttachment = createUpload(
   env.maxFileSize,
   ALLOWED_MESSAGE_TYPES,
