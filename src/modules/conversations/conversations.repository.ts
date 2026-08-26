@@ -1154,9 +1154,9 @@ export async function findMessageReadCompletion(messageIds: string[]) {
       messageId: messages.id,
       senderId: messages.senderId,
       otherMembers: sql<number>`(
-          SELECT COUNT(*) FROM conversation_members cm
-          WHERE cm.conversation_id = messages.conversation_id
-            AND cm.user_id <> messages.sender_id
+          SELECT COUNT(*) FROM message_status ms
+          WHERE ms.message_id = messages.id
+            AND ms.user_id <> messages.sender_id
         )`
         .mapWith(Number)
         .as('other_members'),
