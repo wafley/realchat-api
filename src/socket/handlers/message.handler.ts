@@ -69,7 +69,15 @@ const pinLimiter = createFixedWindowLimiter({
 });
 
 // Throttle penambahan reaksi per user+pesan.
-const reactionLimiter = createFixedWindowLimiter({
+const reactionAddLimiter = createFixedWindowLimiter({
+  windowMs: env.reactionThrottleMs,
+  max: 1,
+});
+
+// Throttle penghapusan reaksi per user+pesan. Dipisah dari penambahan agar
+// pola "bereaksi lalu membatalkan dengan cepat" tidak saling memblokir,
+// setara perilaku WhatsApp (reaksi cepat tidak hilang).
+const reactionRemoveLimiter = createFixedWindowLimiter({
   windowMs: env.reactionThrottleMs,
   max: 1,
 });
@@ -84,7 +92,8 @@ const starLimiter = createFixedWindowLimiter({
 const pruneInterval = setInterval(() => {
   seenLimiter.prune();
   pinLimiter.prune();
-  reactionLimiter.prune();
+  reactionAddLimiter.prune();
+  reactionRemoveLimiter.prune();
   starLimiter.prune();
 }, 60_000);
 // unref agar interval prune tidak menahan proses Node tetap hidup.
@@ -681,7 +690,7 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
     'message:reaction:add',
     async (data: { messageId: string; emoji: string }, callback?: (response: unknown) => void) => {
       try {
-        if (!reactionLimiter.allow(`${userId}:${data.messageId}`)) {
+        if (!reactionAddLimiter.allow(`${userId}:${data.messageId}`)) {
           callback?.({ error: 'Rate limit exceeded. Please slow down.' });
           return;
         }
@@ -718,7 +727,7 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
     'message:reaction:remove',
     async (data: { messageId: string }, callback?: (response: unknown) => void) => {
       try {
-        if (!reactionLimiter.allow(`${userId}:${data.messageId}`)) {
+        if (!reactionRemoveLimiter.allow(`${userId}:${data.messageId}`)) {
           callback?.({ error: 'Rate limit exceeded. Please slow down.' });
           return;
         }
