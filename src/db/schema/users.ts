@@ -22,7 +22,9 @@ export const users = pgTable(
     // Cooldown ganti username (30 hari) - null berarti belum pernah ganti.
     usernameUpdatedAt: timestamp('username_updated_at', { withTimezone: true }),
     email: varchar('email', { length: 255 }).notNull(),
-    passwordHash: text('password_hash').notNull(),
+    passwordHash: text('password_hash'),
+    provider: varchar('provider', { length: 10 }).notNull().default('local'),
+    providerId: varchar('provider_id', { length: 255 }),
     bio: text('bio'),
     fullName: varchar('full_name', { length: 100 }),
     avatarUrl: text('avatar_url'),

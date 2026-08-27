@@ -80,6 +80,10 @@ export async function login(email: string, password: string) {
     throw new UnauthorizedError('Invalid email or password');
   }
 
+  if (!user.passwordHash) {
+    throw new UnauthorizedError('Invalid email or password');
+  }
+
   const valid = await comparePassword(password, user.passwordHash);
   if (!valid) {
     throw new UnauthorizedError('Invalid email or password');
@@ -257,6 +261,10 @@ export async function deleteAccount(userId: string, password: string) {
   // Guard deletedAt: cegah penghapusan ganda pada akun yang sudah dianonimkan.
   if (!user || user.deletedAt) {
     throw new NotFoundError('User not found');
+  }
+
+  if (!user.passwordHash) {
+    throw new ForbiddenError('Set a password first before deleting your account');
   }
 
   const valid = await comparePassword(password, user.passwordHash);

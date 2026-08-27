@@ -38,6 +38,12 @@ router.put(
   validate(validator.changePasswordSchema),
   controller.changePassword,
 );
+router.put(
+  '/me/set-password',
+  verifyJWT,
+  validate(validator.setPasswordSchema),
+  controller.setPassword,
+);
 router.get('/me/blocked', verifyJWT, controller.getBlockedUsers);
 router.get('/me/privacy', verifyJWT, controller.getPrivacy);
 router.put(
