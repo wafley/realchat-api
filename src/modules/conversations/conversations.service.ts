@@ -969,3 +969,96 @@ export async function unmuteConversation(userId: string, conversationId: string)
   await repository.setMutedUntil(conversationId, userId, null);
   return { mutedUntil: null };
 }
+
+/**
+ * Mengelompokkan reaksi berdasarkan emoji.
+ * @returns Daftar `{ emoji, userIds }` siap dikirim ke client.
+ */
+function groupReactionsFromRows(rows: Array<{ emoji: string; userId: string }>) {
+  const byEmoji = new Map<string, string[]>();
+  for (const row of rows) {
+    const userIds = byEmoji.get(row.emoji) ?? [];
+    userIds.push(row.userId);
+    byEmoji.set(row.emoji, userIds);
+  }
+  return [...byEmoji.entries()].map(([emoji, userIds]) => ({ emoji, userIds }));
+}
+
+/** Tambahkan reaksi pesan via REST; emit ke seluruh anggota conversation. */
+export async function addReactionREST(
+  userId: string,
+  conversationId: string,
+  messageId: string,
+  emoji: string,
+) {
+  const message = await repository.findMessageById(messageId);
+  if (!message) throw new NotFoundError('Message not found');
+  if (message.conversationId !== conversationId)
+    throw new ForbiddenError('Message does not belong to this conversation');
+
+  const member = await repository.isMember(conversationId, userId);
+  if (!member) throw new ForbiddenError('You are not a member of this conversation');
+
+  if (message.isDeleted) throw new BadRequestError('Cannot react to a deleted message');
+  if (message.type === 'SYSTEM') throw new BadRequestError('Cannot react to a system message');
+
+  if (await repository.findReaction(messageId, userId, emoji)) {
+    throw new BadRequestError('Reaction already exists');
+  }
+
+  await repository.addReaction(messageId, userId, emoji);
+  const rows = await repository.findReactionsByMessage(messageId);
+  const reactions = groupReactionsFromRows(rows);
+
+  getIO().to(`conversation:${conversationId}`).emit('message:reaction:updated', {
+    messageId,
+    reactions,
+  });
+
+  return { reactions };
+}
+
+/** Hapus reaksi pesan via REST; emit ke seluruh anggota conversation. */
+export async function removeReactionREST(
+  userId: string,
+  conversationId: string,
+  messageId: string,
+  emoji: string,
+) {
+  const message = await repository.findMessageById(messageId);
+  if (!message) throw new NotFoundError('Message not found');
+  if (message.conversationId !== conversationId)
+    throw new ForbiddenError('Message does not belong to this conversation');
+
+  const member = await repository.isMember(conversationId, userId);
+  if (!member) throw new ForbiddenError('You are not a member of this conversation');
+
+  await repository.removeReaction(messageId, userId, emoji);
+  const rows = await repository.findReactionsByMessage(messageId);
+  const reactions = groupReactionsFromRows(rows);
+
+  getIO().to(`conversation:${conversationId}`).emit('message:reaction:updated', {
+    messageId,
+    reactions,
+  });
+
+  return { reactions };
+}
+
+/** Ambil seluruh reaksi untuk satu pesan (modal detail reaction). */
+export async function getMessageReactions(
+  userId: string,
+  conversationId: string,
+  messageId: string,
+) {
+  const message = await repository.findMessageById(messageId);
+  if (!message) throw new NotFoundError('Message not found');
+  if (message.conversationId !== conversationId)
+    throw new ForbiddenError('Message does not belong to this conversation');
+
+  const member = await repository.isMember(conversationId, userId);
+  if (!member) throw new ForbiddenError('You are not a member of this conversation');
+
+  const rows = await repository.findReactionsByMessage(messageId);
+  return { reactions: groupReactionsFromRows(rows) };
+}
