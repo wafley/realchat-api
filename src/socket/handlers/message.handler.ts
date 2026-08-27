@@ -23,6 +23,7 @@ import {
   removeStar,
   countMessageFileReferences,
   findMessageReadCompletion,
+  clearReactionsByMessage,
 } from '../../modules/conversations/conversations.repository';
 import { findUserById } from '../../modules/auth/auth.repository';
 import {
@@ -466,6 +467,9 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
           .update(messages)
           .set({ isDeleted: true, content: '' })
           .where(eq(messages.id, data.messageId));
+
+        // Bersihkan reaksi agar tidak muncul di daftar reaksi.
+        await clearReactionsByMessage(data.messageId);
 
         // File fisik hanya dihapus bila tidak lagi direferensikan pesan lain
         // (mis. pesan hasil forward yang berbagi fileUrl yang sama).
