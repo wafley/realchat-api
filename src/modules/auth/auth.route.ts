@@ -9,6 +9,7 @@ import { validate } from '../../middlewares/validate';
 import { authRateLimiter, refreshRateLimiter } from '../../middlewares/rateLimiter';
 import * as validator from './auth.validator';
 import * as controller from './auth.controller';
+import * as googleController from './google.controller';
 
 /** Instance router Express untuk seluruh endpoint autentikasi. */
 const router = Router();
@@ -42,6 +43,9 @@ router.delete(
   validate(validator.deleteAccountSchema),
   controller.deleteAccount,
 );
+
+router.get('/google', authRateLimiter, googleController.googleAuth);
+router.get('/google/callback', googleController.googleCallback);
 
 /** Router autentikasi yang dipasang pada path /api/auth. */
 export default router;
