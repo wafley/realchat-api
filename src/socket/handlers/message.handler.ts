@@ -36,6 +36,7 @@ import {
 import { notifyConversationMentions } from '../../modules/notifications/notifications.service';
 import { buildInitialReceipt } from '../../modules/conversations/conversations.service';
 import { toSender } from '../../utils/sender';
+import { AppError } from '../../utils/errors';
 import { sendIncomingPush } from '../../modules/devices/devices.service';
 import { env } from '../../config/env';
 import { unlinkQuietly } from '../../utils/cleanup';
@@ -702,8 +703,9 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
 
         const result = await addReactionREST(userId, message.conversationId, messageId, emoji);
         callback?.({ data: result });
-      } catch {
-        callback?.({ error: 'Failed to add reaction' });
+      } catch (error) {
+        const msg = error instanceof AppError ? error.message : 'Failed to add reaction';
+        callback?.({ error: msg });
       }
     },
   );
@@ -737,8 +739,9 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
 
         const result = await removeReactionREST(userId, message.conversationId, messageId, emoji);
         callback?.({ data: result });
-      } catch {
-        callback?.({ error: 'Failed to remove reaction' });
+      } catch (error) {
+        const msg = error instanceof AppError ? error.message : 'Failed to remove reaction';
+        callback?.({ error: msg });
       }
     },
   );
