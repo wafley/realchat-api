@@ -263,11 +263,13 @@ export async function deleteAccount(userId: string, password: string) {
     throw new NotFoundError('User not found');
   }
 
-  if (user.passwordHash) {
-    const valid = await comparePassword(password, user.passwordHash);
-    if (!valid) {
-      throw new ForbiddenError('Password is incorrect');
-    }
+  if (!user.passwordHash) {
+    throw new ForbiddenError('Set a password first before deleting your account');
+  }
+
+  const valid = await comparePassword(password, user.passwordHash);
+  if (!valid) {
+    throw new ForbiddenError('Password is incorrect');
   }
 
   const conversationIds = await repository.findUserConversationIds(userId);
