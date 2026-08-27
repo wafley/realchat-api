@@ -1294,9 +1294,9 @@ export async function findReaction(messageId: string, userId: string, emoji: str
   return row || null;
 }
 
-/** Tambahkan reaksi emoji dari pengguna pada pesan. */
+/** Tambahkan reaksi emoji dari pengguna pada pesan (idempoten). */
 export async function addReaction(messageId: string, userId: string, emoji: string) {
-  await db.insert(messageReactions).values({ messageId, userId, emoji });
+  await db.insert(messageReactions).values({ messageId, userId, emoji }).onConflictDoNothing();
 }
 
 /** Hapus reaksi emoji tertentu dari pengguna pada pesan. */
