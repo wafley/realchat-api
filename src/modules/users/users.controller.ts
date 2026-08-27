@@ -72,6 +72,16 @@ export async function changePassword(req: AuthRequest, res: Response, next: Next
   }
 }
 
+/** Set password untuk pengguna OAuth yang belum punya password. */
+export async function setPassword(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    await userService.setPassword(req.userId!, req.body.password);
+    res.status(200).json({ success: true, message: 'Password set successfully' });
+  } catch (error) {
+    next(error);
+  }
+}
+
 /** Memblokir pengguna lain berdasarkan ID di parameter rute. */
 export async function blockUser(req: AuthRequest, res: Response, next: NextFunction) {
   try {
