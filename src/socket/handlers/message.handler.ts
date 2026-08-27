@@ -19,16 +19,16 @@ import {
 } from '../../modules/conversations/conversations.validator';
 import {
   updateMessagePinned,
-  findReaction,
-  addReaction,
-  removeReaction,
-  findReactionsByMessage,
   addStar,
   removeStar,
   countMessageFileReferences,
   findMessageReadCompletion,
 } from '../../modules/conversations/conversations.repository';
 import { findUserById } from '../../modules/auth/auth.repository';
+import {
+  addReactionREST,
+  removeReactionREST,
+} from '../../modules/conversations/conversations.service';
 import {
   isBlockedByAnyMember,
   hasBlockedAnyMember,
@@ -87,21 +87,6 @@ const pruneInterval = setInterval(() => {
 }, 60_000);
 // unref agar interval prune tidak menahan proses Node tetap hidup.
 pruneInterval.unref();
-
-/**
- * Mengelompokkan seluruh reaksi sebuah pesan berdasarkan emoji.
- * @returns Daftar `{ emoji, userIds }` siap dikirim ke client.
- */
-async function groupReactions(messageId: string) {
-  const rows = await findReactionsByMessage(messageId);
-  const byEmoji = new Map<string, string[]>();
-  for (const row of rows) {
-    const userIds = byEmoji.get(row.emoji) ?? [];
-    userIds.push(row.userId);
-    byEmoji.set(row.emoji, userIds);
-  }
-  return [...byEmoji.entries()].map(([emoji, userIds]) => ({ emoji, userIds }));
-}
 
 /**
  * Mendaftarkan seluruh listener event pesan untuk satu socket: message:send,
@@ -687,16 +672,6 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
     void handleStar(data, false, callback);
   });
 
-  // Kelompokkan ulang reaksi pesan lalu siarkan ke seluruh room percakapan.
-  const emitReactions = (conversationId: string, messageId: string) =>
-    groupReactions(messageId).then((reactions) => {
-      io.to(`conversation:${conversationId}`).emit('message:reaction:updated', {
-        messageId,
-        reactions,
-      });
-      return reactions;
-    });
-
   socket.on(
     'message:reaction:add',
     async (data: { messageId: string; emoji: string }, callback?: (response: unknown) => void) => {
@@ -713,6 +688,7 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
         }
         const { messageId, emoji } = parsed.data;
 
+        // Cari conversationId pesan untuk validasi service.
         const [message] = await db
           .select({ conversationId: messages.conversationId })
           .from(messages)
@@ -724,30 +700,8 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
           return;
         }
 
-        const [membership] = await db
-          .select({ id: conversationMembers.id })
-          .from(conversationMembers)
-          .where(
-            and(
-              eq(conversationMembers.conversationId, message.conversationId),
-              eq(conversationMembers.userId, userId),
-            ),
-          )
-          .limit(1);
-
-        if (!membership) {
-          callback?.({ error: 'Not a member of this conversation' });
-          return;
-        }
-
-        if (await findReaction(messageId, userId, emoji)) {
-          callback?.({ error: 'Reaction already exists' });
-          return;
-        }
-
-        await addReaction(messageId, userId, emoji);
-        const reactions = await emitReactions(message.conversationId, messageId);
-        callback?.({ data: { reactions } });
+        const result = await addReactionREST(userId, message.conversationId, messageId, emoji);
+        callback?.({ data: result });
       } catch {
         callback?.({ error: 'Failed to add reaction' });
       }
@@ -758,6 +712,11 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
     'message:reaction:remove',
     async (data: { messageId: string; emoji: string }, callback?: (response: unknown) => void) => {
       try {
+        if (!reactionLimiter.allow(`${userId}:${data.messageId}`)) {
+          callback?.({ error: 'Rate limit exceeded. Please slow down.' });
+          return;
+        }
+
         const parsed = reactionSchema.safeParse(data);
         if (!parsed.success) {
           callback?.({ error: 'Invalid message:reaction:remove payload' });
@@ -776,25 +735,8 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
           return;
         }
 
-        const [membership] = await db
-          .select({ id: conversationMembers.id })
-          .from(conversationMembers)
-          .where(
-            and(
-              eq(conversationMembers.conversationId, message.conversationId),
-              eq(conversationMembers.userId, userId),
-            ),
-          )
-          .limit(1);
-
-        if (!membership) {
-          callback?.({ error: 'Not a member of this conversation' });
-          return;
-        }
-
-        await removeReaction(messageId, userId, emoji);
-        const reactions = await emitReactions(message.conversationId, messageId);
-        callback?.({ data: { reactions } });
+        const result = await removeReactionREST(userId, message.conversationId, messageId, emoji);
+        callback?.({ data: result });
       } catch {
         callback?.({ error: 'Failed to remove reaction' });
       }
