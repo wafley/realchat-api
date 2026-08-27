@@ -19,8 +19,11 @@ import { eq, or, and, gt, inArray, isNull, sql } from 'drizzle-orm';
 export async function createUser(data: {
   username: string;
   email: string;
-  passwordHash: string;
+  passwordHash?: string;
   fullName?: string;
+  avatarUrl?: string;
+  provider?: string;
+  providerId?: string;
 }) {
   const [user] = await db.insert(users).values(data).returning();
   return user;
@@ -55,6 +58,15 @@ export async function findUserByUsername(username: string) {
 /** Mengambil satu pengguna berdasarkan ID (termasuk yang sudah dihapus). */
 export async function findUserById(id: string) {
   const [user] = await db.select().from(users).where(eq(users.id, id));
+  return user || null;
+}
+
+/** Mencari pengguna berdasarkan provider dan provider ID (untuk OAuth). */
+export async function findUserByProviderId(provider: string, providerId: string) {
+  const [user] = await db
+    .select()
+    .from(users)
+    .where(and(eq(users.provider, provider), eq(users.providerId, providerId)));
   return user || null;
 }
 
