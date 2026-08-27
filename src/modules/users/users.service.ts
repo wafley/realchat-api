@@ -284,6 +284,8 @@ export async function changePassword(userId: string, oldPassword: string, newPas
   const user = await findUserById(userId);
   if (!user) throw new NotFoundError('User not found');
 
+  if (!user.passwordHash) throw new BadRequestError('Current password is incorrect');
+
   const valid = await comparePassword(oldPassword, user.passwordHash);
   if (!valid) throw new BadRequestError('Current password is incorrect');
 
