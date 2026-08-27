@@ -170,11 +170,21 @@ export async function updateNotificationPreferences(
  */
 export async function changePasswordAtomically(userId: string, passwordHash: string) {
   await db.transaction(async (tx) => {
-    // tokenVersion naik: access token lama otomatis ditolak oleh verifyJWT.
     await tx
       .update(users)
       .set({ passwordHash, updatedAt: new Date(), tokenVersion: sql`${users.tokenVersion} + 1` })
       .where(eq(users.id, userId));
     await tx.delete(refreshTokens).where(eq(refreshTokens.userId, userId));
   });
+}
+
+/**
+ * Set password tanpa invalidate sesi — untuk OAuth user yang pertama kali
+ * menyetel sandi. Tidak mengubah tokenVersion atau menghapus refresh token.
+ */
+export async function setPasswordHash(userId: string, passwordHash: string) {
+  await db
+    .update(users)
+    .set({ passwordHash, updatedAt: new Date() })
+    .where(eq(users.id, userId));
 }

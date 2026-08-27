@@ -303,7 +303,7 @@ export async function setPassword(userId: string, password: string) {
   if (user.passwordHash) throw new BadRequestError('Password already set. Use change password instead.');
 
   const passwordHash = await hashPassword(password);
-  await repository.changePasswordAtomically(userId, passwordHash);
+  await repository.setPasswordHash(userId, passwordHash);
 }
 
 /**
