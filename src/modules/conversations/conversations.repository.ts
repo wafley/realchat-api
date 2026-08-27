@@ -1322,3 +1322,16 @@ export async function findReactionsByMessage(messageId: string) {
     .from(messageReactions)
     .where(eq(messageReactions.messageId, messageId));
 }
+
+/** Batch reaksi untuk banyak pesan sekaligus (hemat round-trip). */
+export async function findReactionsByMessages(messageIds: string[]) {
+  if (messageIds.length === 0) return [];
+  return db
+    .select({
+      messageId: messageReactions.messageId,
+      emoji: messageReactions.emoji,
+      userId: messageReactions.userId,
+    })
+    .from(messageReactions)
+    .where(inArray(messageReactions.messageId, messageIds));
+}

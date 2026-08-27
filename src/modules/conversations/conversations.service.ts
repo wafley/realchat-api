@@ -457,6 +457,23 @@ export async function getMessages(
   const hasMore = rawMessages.length > limit;
   const messagesList = hasMore ? rawMessages.slice(0, limit) : rawMessages;
 
+  // Batch fetch reaksi untuk semua pesan di halaman ini.
+  const messageIds = messagesList.map((m) => m.id);
+  const reactionRows = await repository.findReactionsByMessages(messageIds);
+
+  // Group by messageId → by emoji → { emoji, userIds[] }
+  const reactionsByMessage = new Map<string, Array<{ emoji: string; userIds: string[] }>>();
+  for (const row of reactionRows) {
+    const grouped = reactionsByMessage.get(row.messageId) ?? [];
+    const existing = grouped.find((e) => e.emoji === row.emoji);
+    if (existing) {
+      existing.userIds.push(row.userId);
+    } else {
+      grouped.push({ emoji: row.emoji, userIds: [row.userId] });
+    }
+    reactionsByMessage.set(row.messageId, grouped);
+  }
+
   const messages = messagesList.map(
     ({
       minRank,
@@ -480,6 +497,7 @@ export async function getMessages(
             : 'DELIVERED',
       seenAt: seenAt ? seenAt.toISOString() : null,
       starredAt: starredAt ? starredAt.toISOString() : null,
+      reactions: reactionsByMessage.get(message.id) ?? [],
       sender: {
         username: senderUsername,
         fullName: senderFullName,
