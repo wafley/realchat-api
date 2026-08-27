@@ -1335,3 +1335,57 @@ export async function findReactionsByMessages(messageIds: string[]) {
     .from(messageReactions)
     .where(inArray(messageReactions.messageId, messageIds));
 }
+
+/** Daftar pesan yang direaksi pengguna, lintas percakapan. */
+export async function findReactedMessages(
+  userId: string,
+  cursor?: { sortKey: string; id: string },
+  limit = 50,
+) {
+  const reactions = db
+    .select({
+      messageId: messageReactions.messageId,
+      reactedAt: messageReactions.createdAt,
+    })
+    .from(messageReactions)
+    .where(eq(messageReactions.userId, userId))
+    .as('user_reactions');
+
+  const senderUser = aliasedTable(users, 'reacted_sender');
+
+  const conditions: SQL[] = [];
+  if (cursor)
+    conditions.push(
+      sql`(${reactions.reactedAt}, ${reactions.messageId}) < (${cursor.sortKey}::timestamptz, ${cursor.id}::uuid)`,
+    );
+
+  return db
+    .select({
+      id: messages.id,
+      conversationId: messages.conversationId,
+      senderId: messages.senderId,
+      type: messages.type,
+      content: messages.content,
+      replyToId: messages.replyToId,
+      isPinned: messages.isPinned,
+      pinnedAt: messages.pinnedAt,
+      isEdited: messages.isEdited,
+      isDeleted: messages.isDeleted,
+      editedAt: messages.editedAt,
+      createdAt: messages.createdAt,
+      reactedAt: reactions.reactedAt,
+      senderUsername: senderUser.username,
+      senderFullName: senderUser.fullName,
+      senderAvatarUrl: senderUser.avatarUrl,
+      conversationType: conversations.type,
+      conversationName: conversations.name,
+      conversationAvatarUrl: conversations.avatarUrl,
+    })
+    .from(reactions)
+    .innerJoin(messages, eq(messages.id, reactions.messageId))
+    .innerJoin(senderUser, eq(senderUser.id, messages.senderId))
+    .innerJoin(conversations, eq(conversations.id, messages.conversationId))
+    .where(and(...conditions))
+    .orderBy(desc(reactions.reactedAt), desc(reactions.messageId))
+    .limit(limit + 1);
+}

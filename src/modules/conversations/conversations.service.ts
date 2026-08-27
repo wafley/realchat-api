@@ -1062,3 +1062,48 @@ export async function getMessageReactions(
   const rows = await repository.findReactionsByMessage(messageId);
   return { reactions: groupReactionsFromRows(rows) };
 }
+
+/**
+ * Daftar pesan yang direaksi pengguna lintas percakapan dengan
+ * paginasi keyset berbasis (reactedAt, id).
+ */
+export async function getReactedMessages(userId: string, cursor?: string, limit = 50) {
+  const decodedCursor = cursor ? decodeCompositeCursor(cursor) : undefined;
+  const rows = await repository.findReactedMessages(userId, decodedCursor, limit);
+  const hasMore = rows.length > limit;
+  const page = hasMore ? rows.slice(0, limit) : rows;
+
+  const messages = page.map((row) => ({
+    id: row.id,
+    conversationId: row.conversationId,
+    senderId: row.senderId,
+    type: row.type,
+    content: row.content,
+    replyToId: row.replyToId,
+    isPinned: row.isPinned,
+    pinnedAt: row.pinnedAt,
+    isEdited: row.isEdited,
+    isDeleted: row.isDeleted,
+    editedAt: row.editedAt,
+    createdAt: row.createdAt,
+    reactedAt: row.reactedAt.toISOString(),
+    sender: {
+      username: row.senderUsername,
+      fullName: row.senderFullName,
+      avatarUrl: row.senderAvatarUrl,
+    },
+    conversation: {
+      id: row.conversationId,
+      type: row.conversationType,
+      name: row.conversationName,
+      avatarUrl: row.conversationAvatarUrl,
+    },
+  }));
+
+  return {
+    messages,
+    nextCursor: hasMore
+      ? encodeCompositeCursor(page[page.length - 1].reactedAt, page[page.length - 1].id)
+      : null,
+  };
+}

@@ -77,5 +77,10 @@ const starredRouter = Router();
 
 starredRouter.get('/starred', verifyJWT, controller.getStarredMessages);
 
+// Router terpisah untuk daftar pesan yang direaksi lintas percakapan.
+const reactedRouter = Router();
+
+reactedRouter.get('/reacted', verifyJWT, controller.getReactedMessages);
+
 export default router;
-export { starredRouter };
+export { starredRouter, reactedRouter };

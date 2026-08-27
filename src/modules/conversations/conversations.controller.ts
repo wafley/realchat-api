@@ -308,3 +308,14 @@ export async function getMessageReactions(req: AuthRequest, res: Response, next:
     next(error);
   }
 }
+
+/** Daftar seluruh pesan yang direaksi pengguna lintas percakapan. */
+export async function getReactedMessages(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const { cursor, limit } = paginationSchema.parse(req.query);
+    const result = await conversationService.getReactedMessages(req.userId!, cursor, limit);
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+}
