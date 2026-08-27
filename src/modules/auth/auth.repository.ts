@@ -37,8 +37,7 @@ export async function findUserByEmail(email: string) {
   const [user] = await db
     .select()
     .from(users)
-    // Pencocokan lower() agar "A@x.com" dan "a@x.com" dianggap sama.
-    .where(sql`lower(${users.email}) = lower(${email})`);
+    .where(and(sql`lower(${users.email}) = lower(${email})`, isNull(users.deletedAt)));
   return user || null;
 }
 
@@ -66,7 +65,7 @@ export async function findUserByProviderId(provider: string, providerId: string)
   const [user] = await db
     .select()
     .from(users)
-    .where(and(eq(users.provider, provider), eq(users.providerId, providerId)));
+    .where(and(eq(users.provider, provider), eq(users.providerId, providerId), isNull(users.deletedAt)));
   return user || null;
 }
 
