@@ -461,15 +461,41 @@ export async function getMessages(
   const messageIds = messagesList.map((m) => m.id);
   const reactionRows = await repository.findReactionsByMessages(messageIds);
 
-  // Group by messageId → by emoji → { emoji, userIds[] }
-  const reactionsByMessage = new Map<string, Array<{ emoji: string; userIds: string[] }>>();
+  // Group by messageId → by emoji → { emoji, users[] }
+  const reactionsByMessage = new Map<
+    string,
+    Array<{
+      emoji: string;
+      users: Array<{
+        userId: string;
+        username: string;
+        fullName: string | null;
+        avatarUrl: string | null;
+      }>;
+    }>
+  >();
   for (const row of reactionRows) {
     const grouped = reactionsByMessage.get(row.messageId) ?? [];
     const existing = grouped.find((e) => e.emoji === row.emoji);
     if (existing) {
-      existing.userIds.push(row.userId);
+      existing.users.push({
+        userId: row.userId,
+        username: row.username,
+        fullName: row.fullName,
+        avatarUrl: row.avatarUrl,
+      });
     } else {
-      grouped.push({ emoji: row.emoji, userIds: [row.userId] });
+      grouped.push({
+        emoji: row.emoji,
+        users: [
+          {
+            userId: row.userId,
+            username: row.username,
+            fullName: row.fullName,
+            avatarUrl: row.avatarUrl,
+          },
+        ],
+      });
     }
     reactionsByMessage.set(row.messageId, grouped);
   }
@@ -586,6 +612,9 @@ export async function deleteMessage(userId: string, conversationId: string, mess
   if (!member) throw new ForbiddenError('You are not a member of this conversation');
 
   await repository.softDeleteMessage(messageId);
+
+  // Bersihkan reaksi agar tidak muncul di daftar reaksi.
+  await repository.clearReactionsByMessage(messageId);
 
   // Reference-aware unlink: hitung dulu referensi fileUrl lain.
   if (message.fileUrl && (await repository.countMessageFileReferences(message.fileUrl)) === 0) {
@@ -971,20 +1000,36 @@ export async function unmuteConversation(userId: string, conversationId: string)
 }
 
 /**
- * Mengelompokkan reaksi berdasarkan emoji.
- * @returns Daftar `{ emoji, userIds }` siap dikirim ke client.
+ * Mengelompokkan reaksi berdasarkan emoji beserta info pengguna.
+ * @returns Daftar `{ emoji, users[] }` siap dikirim ke client.
  */
-function groupReactionsFromRows(rows: Array<{ emoji: string; userId: string }>) {
-  const byEmoji = new Map<string, string[]>();
+function groupReactionsFromRows(
+  rows: Array<{
+    emoji: string;
+    userId: string;
+    username: string;
+    fullName: string | null;
+    avatarUrl: string | null;
+  }>,
+) {
+  const byEmoji = new Map<
+    string,
+    Array<{ userId: string; username: string; fullName: string | null; avatarUrl: string | null }>
+  >();
   for (const row of rows) {
-    const userIds = byEmoji.get(row.emoji) ?? [];
-    userIds.push(row.userId);
-    byEmoji.set(row.emoji, userIds);
+    const users = byEmoji.get(row.emoji) ?? [];
+    users.push({
+      userId: row.userId,
+      username: row.username,
+      fullName: row.fullName,
+      avatarUrl: row.avatarUrl,
+    });
+    byEmoji.set(row.emoji, users);
   }
-  return [...byEmoji.entries()].map(([emoji, userIds]) => ({ emoji, userIds }));
+  return [...byEmoji.entries()].map(([emoji, users]) => ({ emoji, users }));
 }
 
-/** Tambahkan reaksi pesan via REST; emit ke seluruh anggota conversation. */
+/** Tambahkan/reaction pesan via REST (upsert: replace jika sudah ada). */
 export async function addReactionREST(
   userId: string,
   conversationId: string,
@@ -1002,10 +1047,7 @@ export async function addReactionREST(
   if (message.isDeleted) throw new BadRequestError('Cannot react to a deleted message');
   if (message.type === 'SYSTEM') throw new BadRequestError('Cannot react to a system message');
 
-  if (await repository.findReaction(messageId, userId, emoji)) {
-    throw new BadRequestError('Reaction already exists');
-  }
-
+  // Upsert: jika sudah ada reaksi, ganti emoji (1 per user per pesan).
   await repository.addReaction(messageId, userId, emoji);
   const rows = await repository.findReactionsByMessage(messageId);
   const reactions = groupReactionsFromRows(rows);
@@ -1023,7 +1065,6 @@ export async function removeReactionREST(
   userId: string,
   conversationId: string,
   messageId: string,
-  emoji: string,
 ) {
   const message = await repository.findMessageById(messageId);
   if (!message) throw new NotFoundError('Message not found');
@@ -1033,7 +1074,12 @@ export async function removeReactionREST(
   const member = await repository.isMember(conversationId, userId);
   if (!member) throw new ForbiddenError('You are not a member of this conversation');
 
-  await repository.removeReaction(messageId, userId, emoji);
+  // Hanya izinkan hapus reaction jika pesan bukan deleted/system.
+  if (message.isDeleted) throw new BadRequestError('Cannot modify reaction on a deleted message');
+  if (message.type === 'SYSTEM')
+    throw new BadRequestError('Cannot modify reaction on a system message');
+
+  await repository.removeReaction(messageId, userId);
   const rows = await repository.findReactionsByMessage(messageId);
   const reactions = groupReactionsFromRows(rows);
 

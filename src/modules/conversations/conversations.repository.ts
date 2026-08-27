@@ -1279,47 +1279,51 @@ export async function findStar(messageId: string, userId: string) {
 }
 
 /** Cari reaksi emoji tertentu dari pengguna pada sebuah pesan. */
-export async function findReaction(messageId: string, userId: string, emoji: string) {
+/** Cek apakah pengguna sudah bereaksi pada pesan. */
+export async function findReaction(messageId: string, userId: string) {
   const [row] = await db
-    .select({ id: messageReactions.id })
+    .select({ id: messageReactions.id, emoji: messageReactions.emoji })
     .from(messageReactions)
-    .where(
-      and(
-        eq(messageReactions.messageId, messageId),
-        eq(messageReactions.userId, userId),
-        eq(messageReactions.emoji, emoji),
-      ),
-    )
+    .where(and(eq(messageReactions.messageId, messageId), eq(messageReactions.userId, userId)))
     .limit(1);
   return row || null;
 }
 
-/** Tambahkan reaksi emoji dari pengguna pada pesan (idempoten). */
+/** Upsert reaksi: jika sudah ada, ganti emoji (1 emoji per user per pesan). */
 export async function addReaction(messageId: string, userId: string, emoji: string) {
-  await db.insert(messageReactions).values({ messageId, userId, emoji }).onConflictDoNothing();
+  await db
+    .insert(messageReactions)
+    .values({ messageId, userId, emoji })
+    .onConflictDoUpdate({
+      target: [messageReactions.messageId, messageReactions.userId],
+      set: { emoji },
+    });
 }
 
-/** Hapus reaksi emoji tertentu dari pengguna pada pesan. */
-export async function removeReaction(messageId: string, userId: string, emoji: string) {
+/** Hapus reaksi pengguna pada pesan. */
+export async function removeReaction(messageId: string, userId: string) {
   await db
     .delete(messageReactions)
-    .where(
-      and(
-        eq(messageReactions.messageId, messageId),
-        eq(messageReactions.userId, userId),
-        eq(messageReactions.emoji, emoji),
-      ),
-    );
+    .where(and(eq(messageReactions.messageId, messageId), eq(messageReactions.userId, userId)));
 }
 
-/** Semua reaksi (emoji + userId) untuk sebuah pesan. */
+/** Hapus semua reaksi pada pesan tertentu (dipanggil saat soft-delete). */
+export async function clearReactionsByMessage(messageId: string) {
+  await db.delete(messageReactions).where(eq(messageReactions.messageId, messageId));
+}
+
+/** Semua reaksi untuk sebuah pesan beserta info pengguna. */
 export async function findReactionsByMessage(messageId: string) {
   return db
     .select({
       emoji: messageReactions.emoji,
       userId: messageReactions.userId,
+      username: users.username,
+      fullName: users.fullName,
+      avatarUrl: users.avatarUrl,
     })
     .from(messageReactions)
+    .innerJoin(users, eq(messageReactions.userId, users.id))
     .where(eq(messageReactions.messageId, messageId));
 }
 
@@ -1331,8 +1335,12 @@ export async function findReactionsByMessages(messageIds: string[]) {
       messageId: messageReactions.messageId,
       emoji: messageReactions.emoji,
       userId: messageReactions.userId,
+      username: users.username,
+      fullName: users.fullName,
+      avatarUrl: users.avatarUrl,
     })
     .from(messageReactions)
+    .innerJoin(users, eq(messageReactions.userId, users.id))
     .where(inArray(messageReactions.messageId, messageIds));
 }
 

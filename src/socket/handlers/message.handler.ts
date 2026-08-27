@@ -712,19 +712,19 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
 
   socket.on(
     'message:reaction:remove',
-    async (data: { messageId: string; emoji: string }, callback?: (response: unknown) => void) => {
+    async (data: { messageId: string }, callback?: (response: unknown) => void) => {
       try {
         if (!reactionLimiter.allow(`${userId}:${data.messageId}`)) {
           callback?.({ error: 'Rate limit exceeded. Please slow down.' });
           return;
         }
 
-        const parsed = reactionSchema.safeParse(data);
+        const parsed = reactionSchema.omit({ emoji: true }).safeParse(data);
         if (!parsed.success) {
           callback?.({ error: 'Invalid message:reaction:remove payload' });
           return;
         }
-        const { messageId, emoji } = parsed.data;
+        const { messageId } = parsed.data;
 
         const [message] = await db
           .select({ conversationId: messages.conversationId })
@@ -737,7 +737,7 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
           return;
         }
 
-        const result = await removeReactionREST(userId, message.conversationId, messageId, emoji);
+        const result = await removeReactionREST(userId, message.conversationId, messageId);
         callback?.({ data: result });
       } catch (error) {
         const msg = error instanceof AppError ? error.message : 'Failed to remove reaction';

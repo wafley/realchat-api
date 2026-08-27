@@ -290,8 +290,7 @@ export async function addReactionREST(req: AuthRequest, res: Response, next: Nex
 export async function removeReactionREST(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const { id, messageId } = messageIdSchema.parse(req.params);
-    const { emoji } = addReactionBodySchema.parse(req.body);
-    const result = await conversationService.removeReactionREST(req.userId!, id, messageId, emoji);
+    const result = await conversationService.removeReactionREST(req.userId!, id, messageId);
     res.status(200).json({ success: true, data: result });
   } catch (error) {
     next(error);

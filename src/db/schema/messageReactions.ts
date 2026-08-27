@@ -1,6 +1,7 @@
 /**
- * Skema reaksi emoji pada pesan; satu pengguna boleh memberi banyak emoji
- * berbeda per pesan (unik per messageId+userId+emoji).
+ * Skema reaksi emoji pada pesan; satu pengguna hanya boleh punya
+ * satu reaksi per pesan (unik per messageId+userId). Jika bereaksi
+ * lagi, emoji lama akan diganti (upsert).
  */
 import { pgTable, uuid, varchar, timestamp, unique } from 'drizzle-orm/pg-core';
 import { users } from './users';
@@ -20,6 +21,6 @@ export const messageReactions = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    unq: unique().on(table.messageId, table.userId, table.emoji),
+    unq: unique().on(table.messageId, table.userId),
   }),
 );

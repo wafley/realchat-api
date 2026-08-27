@@ -57,12 +57,7 @@ router.put(
   validate(validator.addReactionBodySchema),
   controller.addReactionREST,
 );
-router.delete(
-  '/:id/messages/:messageId/reactions',
-  verifyJWT,
-  validate(validator.addReactionBodySchema),
-  controller.removeReactionREST,
-);
+router.delete('/:id/messages/:messageId/reactions', verifyJWT, controller.removeReactionREST);
 router.get('/:id/messages/:messageId/reactions', verifyJWT, controller.getMessageReactions);
 router.post('/:id/read', verifyJWT, controller.markConversationRead);
 router.put('/:id/mute', verifyJWT, validate(validator.muteSchema), controller.muteConversation);
