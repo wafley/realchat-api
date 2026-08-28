@@ -498,7 +498,7 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
         // Hapus lembut: konten dikosongkan, baris pesan dipertahankan.
         await db
           .update(messages)
-          .set({ isDeleted: true, content: '' })
+          .set({ isDeleted: true, content: '', deletedBy: userId })
           .where(eq(messages.id, data.messageId));
 
         // Bersihkan reaksi agar tidak muncul di daftar reaksi.

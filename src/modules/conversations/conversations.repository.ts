@@ -677,6 +677,7 @@ const messageColumns = {
   pinnedAt: messages.pinnedAt,
   isEdited: messages.isEdited,
   isDeleted: messages.isDeleted,
+  deletedBy: messages.deletedBy,
   editedAt: messages.editedAt,
   createdAt: messages.createdAt,
 };
@@ -919,10 +920,15 @@ export async function updateMessageContent(id: string, content: string) {
 }
 
 /** Hapus lunak: isDeleted=true dan isi pesan dikosongkan. */
-export async function softDeleteMessage(id: string) {
+export async function softDeleteMessage(id: string, deletedBy?: string) {
   const [message] = await db
     .update(messages)
-    .set({ isDeleted: true, content: '', updatedAt: new Date() })
+    .set({
+      isDeleted: true,
+      content: '',
+      deletedBy: deletedBy ?? null,
+      updatedAt: new Date(),
+    })
     .where(eq(messages.id, id))
     .returning(messageColumns);
   return message || null;

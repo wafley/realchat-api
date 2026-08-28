@@ -621,7 +621,7 @@ export async function deleteMessage(userId: string, conversationId: string, mess
       throw new ForbiddenError('Only group admins can delete other members messages');
   }
 
-  await repository.softDeleteMessage(messageId);
+  await repository.softDeleteMessage(messageId, userId);
 
   // Bersihkan reaksi agar tidak muncul di daftar reaksi.
   await repository.clearReactionsByMessage(messageId);
