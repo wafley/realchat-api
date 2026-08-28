@@ -361,6 +361,31 @@ export async function isMember(conversationId: string, userId: string) {
   return !!result;
 }
 
+/** Jenis percakapan ('PRIVATE' | 'GROUP'); null bila tidak ditemukan. */
+export async function findConversationType(conversationId: string) {
+  const [result] = await db
+    .select({ type: conversations.type })
+    .from(conversations)
+    .where(eq(conversations.id, conversationId))
+    .limit(1);
+  return result || null;
+}
+
+/** Peran anggota pada sebuah percakapan; null bila bukan anggota. */
+export async function findMemberRole(conversationId: string, userId: string) {
+  const [result] = await db
+    .select({ role: conversationMembers.role })
+    .from(conversationMembers)
+    .where(
+      and(
+        eq(conversationMembers.conversationId, conversationId),
+        eq(conversationMembers.userId, userId),
+      ),
+    )
+    .limit(1);
+  return result || null;
+}
+
 /** Baris keanggotaan pengguna (kolom clearedAt untuk filter riwayat). */
 export async function findMembershipByUser(conversationId: string, userId: string) {
   const [result] = await db

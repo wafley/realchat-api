@@ -595,21 +595,31 @@ export async function editMessage(
 }
 
 /**
- * Hapus lunak pesan milik sendiri dan siarkan event message:deleted.
+ * Hapus lunak pesan (milik sendiri, atau pesan member lain oleh admin grup —
+ * delete for everyone) dan siarkan event message:deleted.
  * Berkas lampiran dihapus fisik hanya bila tidak ada pesan lain
  * (mis. hasil forward) yang masih mereferensikan fileUrl yang sama.
  */
 export async function deleteMessage(userId: string, conversationId: string, messageId: string) {
   const message = await repository.findMessageById(messageId);
   if (!message) throw new NotFoundError('Message not found');
-  if (message.senderId !== userId)
-    throw new ForbiddenError('You can only delete your own messages');
   if (message.conversationId !== conversationId)
     throw new ForbiddenError('Message does not belong to this conversation');
   if (message.type === 'SYSTEM') throw new BadRequestError('Cannot delete a system message');
 
   const member = await repository.isMember(conversationId, userId);
   if (!member) throw new ForbiddenError('You are not a member of this conversation');
+
+  // Pengguna boleh menghapus pesan miliknya sendiri; selain itu hanya admin
+  // grup yang boleh menghapus pesan member lain (delete for everyone).
+  const isOwner = message.senderId === userId;
+  if (!isOwner) {
+    const conv = await repository.findConversationType(conversationId);
+    if (conv?.type !== 'GROUP') throw new ForbiddenError('You can only delete your own messages');
+    const role = await repository.findMemberRole(conversationId, userId);
+    if (role?.role !== 'ADMIN')
+      throw new ForbiddenError('Only group admins can delete other members messages');
+  }
 
   await repository.softDeleteMessage(messageId);
 
@@ -626,7 +636,7 @@ export async function deleteMessage(userId: string, conversationId: string, mess
 
   getIO()
     .to(`conversation:${conversationId}`)
-    .emit('message:deleted', { conversationId, messageId });
+    .emit('message:deleted', { conversationId, messageId, deletedBy: userId });
 }
 
 /**
