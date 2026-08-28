@@ -1053,6 +1053,7 @@ export async function addReactionREST(
   const reactions = groupReactionsFromRows(rows);
 
   getIO().to(`conversation:${conversationId}`).emit('message:reaction:updated', {
+    conversationId,
     messageId,
     reactions,
   });
@@ -1084,6 +1085,7 @@ export async function removeReactionREST(
   const reactions = groupReactionsFromRows(rows);
 
   getIO().to(`conversation:${conversationId}`).emit('message:reaction:updated', {
+    conversationId,
     messageId,
     reactions,
   });
