@@ -357,7 +357,7 @@ const socket = io('http://{{BACKEND_IP}}:3000', {
 | `message:deleted` | `{ conversationId, messageId }` | Message deleted |
 | `message:edited` | Row pesan penuh (termasuk `updatedAt`) | Message edited |
 | `message:pin:updated` | `{ conversationId, messageId, isPinned }` | Message pin/unpin state changed |
-| `message:reaction:updated` | `{ messageId, reactions: [{ emoji, userIds[] }] }` | Reaction state changed |
+| `message:reaction:updated` | `{ conversationId, messageId, reactions: [{ emoji, users: [{ userId, username, fullName, avatarUrl }] }] }` | Reaction state changed (1 emoji per user per message) |
 | `message:star:updated` | `{ messageId, isStarred, starredAt }` | Star state changed (**hanya ke room `user:<userId>`** — privat) |
 | `typing:start` | `{ conversationId, userId }` | User started typing |
 | `typing:stop` | `{ conversationId, userId }` | User stopped typing |

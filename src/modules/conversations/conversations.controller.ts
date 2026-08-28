@@ -13,6 +13,7 @@ import {
   messageIdSchema,
   paginationSchema,
   uploadMessageSchema,
+  addReactionBodySchema,
 } from './conversations.validator';
 
 /** Membuat percakapan privat baru dengan satu partisipan. */
@@ -267,6 +268,51 @@ export async function getStarredMessages(req: AuthRequest, res: Response, next: 
   try {
     const { cursor, limit } = paginationSchema.parse(req.query);
     const result = await conversationService.getStarredMessages(req.userId!, cursor, limit);
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/** Tambahkan reaksi emoji pada pesan via REST. */
+export async function addReactionREST(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const { id, messageId } = messageIdSchema.parse(req.params);
+    const { emoji } = addReactionBodySchema.parse(req.body);
+    const result = await conversationService.addReactionREST(req.userId!, id, messageId, emoji);
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/** Hapus reaksi emoji dari pesan via REST. */
+export async function removeReactionREST(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const { id, messageId } = messageIdSchema.parse(req.params);
+    const result = await conversationService.removeReactionREST(req.userId!, id, messageId);
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/** Ambil seluruh reaksi untuk satu pesan. */
+export async function getMessageReactions(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const { id, messageId } = messageIdSchema.parse(req.params);
+    const result = await conversationService.getMessageReactions(req.userId!, id, messageId);
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/** Daftar seluruh pesan yang direaksi pengguna lintas percakapan. */
+export async function getReactedMessages(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const { cursor, limit } = paginationSchema.parse(req.query);
+    const result = await conversationService.getReactedMessages(req.userId!, cursor, limit);
     res.status(200).json({ success: true, data: result });
   } catch (error) {
     next(error);

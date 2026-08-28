@@ -82,6 +82,13 @@ export const reactionSchema = z
   })
   .strict();
 
+/** Body tambah reaksi via REST (messageId dari params). */
+export const addReactionBodySchema = z
+  .object({
+    emoji: z.string().trim().min(1).max(10),
+  })
+  .strict();
+
 /** Body bisu percakapan: until ISO datetime opsional. */
 export const muteSchema = z
   .object({
