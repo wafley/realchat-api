@@ -790,6 +790,10 @@ export async function forwardMessage(
       };
     });
 
+  // Hasil forward ditandai: hitung jumlah forward dari pesan asal + 1.
+  const isForwarded = true;
+  const forwardCount = (message.forwardCount ?? 0) + 1;
+
   // Pesan salinan + status penerima dibuat dalam satu transaksi.
   const created = await repository.forwardMessageAtomically(
     targetConversationId,
@@ -804,6 +808,7 @@ export async function forwardMessage(
       duration: message.duration,
     },
     recipientRows,
+    { isForwarded, forwardCount },
   );
 
   // Tidak ada emit message:status awal; rekap status awal dilekatkan ke
