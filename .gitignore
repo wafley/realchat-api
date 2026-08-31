@@ -1,8 +1,6 @@
 node_modules/
 .env
 dist/
-scripts/e2e_reaction_test.ts
-scripts/e2e_race_test.ts
 uploads/**
 !uploads/**/
 !uploads/**/.gitkeep

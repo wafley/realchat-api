@@ -40,6 +40,8 @@ export const messages = pgTable(
     pinnedAt: timestamp('pinned_at', { withTimezone: true }),
     isEdited: boolean('is_edited').notNull().default(false),
     isDeleted: boolean('is_deleted').notNull().default(false),
+    // Siapa yang menghapus pesan (admin grup untuk delete for-everyone).
+    deletedBy: uuid('deleted_by').references(() => users.id),
     editedAt: timestamp('edited_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

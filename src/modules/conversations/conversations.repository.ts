@@ -361,6 +361,31 @@ export async function isMember(conversationId: string, userId: string) {
   return !!result;
 }
 
+/** Jenis percakapan ('PRIVATE' | 'GROUP'); null bila tidak ditemukan. */
+export async function findConversationType(conversationId: string) {
+  const [result] = await db
+    .select({ type: conversations.type })
+    .from(conversations)
+    .where(eq(conversations.id, conversationId))
+    .limit(1);
+  return result || null;
+}
+
+/** Peran anggota pada sebuah percakapan; null bila bukan anggota. */
+export async function findMemberRole(conversationId: string, userId: string) {
+  const [result] = await db
+    .select({ role: conversationMembers.role })
+    .from(conversationMembers)
+    .where(
+      and(
+        eq(conversationMembers.conversationId, conversationId),
+        eq(conversationMembers.userId, userId),
+      ),
+    )
+    .limit(1);
+  return result || null;
+}
+
 /** Baris keanggotaan pengguna (kolom clearedAt untuk filter riwayat). */
 export async function findMembershipByUser(conversationId: string, userId: string) {
   const [result] = await db
@@ -652,6 +677,7 @@ const messageColumns = {
   pinnedAt: messages.pinnedAt,
   isEdited: messages.isEdited,
   isDeleted: messages.isDeleted,
+  deletedBy: messages.deletedBy,
   editedAt: messages.editedAt,
   createdAt: messages.createdAt,
 };
@@ -894,10 +920,15 @@ export async function updateMessageContent(id: string, content: string) {
 }
 
 /** Hapus lunak: isDeleted=true dan isi pesan dikosongkan. */
-export async function softDeleteMessage(id: string) {
+export async function softDeleteMessage(id: string, deletedBy?: string) {
   const [message] = await db
     .update(messages)
-    .set({ isDeleted: true, content: '', updatedAt: new Date() })
+    .set({
+      isDeleted: true,
+      content: '',
+      deletedBy: deletedBy ?? null,
+      updatedAt: new Date(),
+    })
     .where(eq(messages.id, id))
     .returning(messageColumns);
   return message || null;

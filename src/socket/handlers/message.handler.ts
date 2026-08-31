@@ -438,16 +438,12 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
           .select()
           .from(messages)
           .where(
-            and(
-              eq(messages.id, data.messageId),
-              eq(messages.senderId, userId),
-              eq(messages.conversationId, data.conversationId),
-            ),
+            and(eq(messages.id, data.messageId), eq(messages.conversationId, data.conversationId)),
           )
           .limit(1);
 
         if (!message) {
-          callback?.({ error: 'Message not found or unauthorized' });
+          callback?.({ error: 'Message not found' });
           return;
         }
         if (message.type === 'SYSTEM') {
@@ -471,10 +467,38 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
           return;
         }
 
+        // Pengguna boleh menghapus pesan miliknya sendiri; selain itu hanya
+        // admin grup yang boleh menghapus pesan member lain.
+        if (message.senderId !== userId) {
+          const [conv] = await db
+            .select({ type: conversations.type })
+            .from(conversations)
+            .where(eq(conversations.id, data.conversationId))
+            .limit(1);
+          if (conv?.type !== 'GROUP') {
+            callback?.({ error: 'You can only delete your own messages' });
+            return;
+          }
+          const [roleRow] = await db
+            .select({ role: conversationMembers.role })
+            .from(conversationMembers)
+            .where(
+              and(
+                eq(conversationMembers.conversationId, data.conversationId),
+                eq(conversationMembers.userId, userId),
+              ),
+            )
+            .limit(1);
+          if (roleRow?.role !== 'ADMIN') {
+            callback?.({ error: 'Only group admins can delete other members messages' });
+            return;
+          }
+        }
+
         // Hapus lembut: konten dikosongkan, baris pesan dipertahankan.
         await db
           .update(messages)
-          .set({ isDeleted: true, content: '' })
+          .set({ isDeleted: true, content: '', deletedBy: userId })
           .where(eq(messages.id, data.messageId));
 
         // Bersihkan reaksi agar tidak muncul di daftar reaksi.
@@ -492,6 +516,7 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
         io.to(`conversation:${data.conversationId}`).emit('message:deleted', {
           messageId: data.messageId,
           conversationId: data.conversationId,
+          deletedBy: userId,
         });
 
         callback?.({ data: { messageId: data.messageId } });

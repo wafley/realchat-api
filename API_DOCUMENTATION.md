@@ -184,7 +184,7 @@ Ulang request yang gagal
 | GET | `/conversations/:id/messages` | `?cursor=&limit=50` | 200 — paginated messages |
 | GET | `/conversations/:id/pinned` | `?limit=50` | 200 — `{ messages }` daftar pesan terpin |
 | PUT | `/conversations/:id/messages/:messageId` | `{ content }` | 200 — edited message |
-| DELETE | `/conversations/:id/messages/:messageId` | — | 200 — deleted |
+| DELETE | `/conversations/:id/messages/:messageId` | — | 200 — deleted (pemilik pesan, atau admin grup untuk pesan member lain — delete for everyone) |
 | PUT | `/conversations/:id/messages/:messageId/pin` | — | 200 — `{ isPinned: true }` (broadcast `message:pin:updated`) |
 | DELETE | `/conversations/:id/messages/:messageId/pin` | — | 200 — `{ isPinned: false }` |
 | POST | `/conversations/:id/messages/:messageId/forward` | `{ targetConversationId }` | 201 — forwarded message (broadcast `message:new`) |
@@ -354,7 +354,7 @@ const socket = io('http://{{BACKEND_IP}}:3000', {
 |-------|---------|-------------|
 | `message:new` | Row pesan penuh (id, conversationId, senderId, type, content, replyToId, isPinned, isEdited, isDeleted, editedAt, createdAt, updatedAt) **+ `sender: { username, fullName, avatarUrl }`** | Pesan baru di conversation (SYSTEM & forward memakai shape sama) |
 | `message:status` | `{ messageId, status: 'DELIVERED' \| 'SEEN', userId, seenAt }` | Status delivery/read untuk pengirim |
-| `message:deleted` | `{ conversationId, messageId }` | Message deleted |
+| `message:deleted` | `{ conversationId, messageId, deletedBy }` | Message deleted |
 | `message:edited` | Row pesan penuh (termasuk `updatedAt`) | Message edited |
 | `message:pin:updated` | `{ conversationId, messageId, isPinned }` | Message pin/unpin state changed |
 | `message:reaction:updated` | `{ conversationId, messageId, reactions: [{ emoji, users: [{ userId, username, fullName, avatarUrl }] }] }` | Reaction state changed (1 emoji per user per message) |
