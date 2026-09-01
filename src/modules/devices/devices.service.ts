@@ -68,26 +68,27 @@ export async function sendIncomingPush(options: {
     );
     if (recipients.length === 0) return;
 
-    // Judul push: untuk grup tampilkan "pengirim @ nama grup", untuk DM nama pengirim.
+    // Judul push: untuk grup pakai nama grup saja, untuk DM nama pengirim.
     const isGroup = options.conversationType === 'GROUP';
-    const title = isGroup
-      ? `${options.senderName} @ ${options.conversationName || 'Group'}`
-      : options.senderName;
+    const title = isGroup ? options.conversationName || 'Group' : options.senderName;
+
+    // Body push: untuk grup "pengirim: pesan", untuk DM hanya isi pesan.
+    const body = isGroup
+      ? `${options.senderName}: ${messagePreview(options.content)}`
+      : messagePreview(options.content);
 
     await sendPush(
       recipients.map((r) => r.userId),
       {
         title,
-        body: messagePreview(options.content),
+        body,
         data: {
           conversationId: options.conversationId,
           messageId: options.messageId,
           type: isGroup ? 'group' : 'dm',
           senderId: options.senderId,
           senderName: options.senderName,
-          url: isGroup
-            ? `/chat/${options.conversationId}`
-            : `/dm/${options.conversationId}`,
+          url: isGroup ? `/chat/${options.conversationId}` : `/dm/${options.conversationId}`,
         },
       },
     );
