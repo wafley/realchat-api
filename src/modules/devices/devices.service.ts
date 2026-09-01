@@ -1,10 +1,10 @@
 /**
- * Layanan logika bisnis perangkat: registrasi/penghapusan token FCM milik user
- * dan fan-out push notification untuk pesan masuk dengan menyaring penerima
+ * Layanan logika bisnis perangkat: registrasi/penghapusan subscription id milik
+ * user dan fan-out push notification untuk pesan masuk dengan menyaring penerima
  * yang memblokir pengirim, sedang mode mute, atau mematikan notifikasi pesan.
  */
 import * as repository from './devices.repository';
-import { sendPush, messagePreview } from './fcm.service';
+import { sendPush, messagePreview } from './onesignal.service';
 import { getBlockRelationUserIds } from '../users/blockedUsers.repository';
 import { findNewMessageOptOuts } from '../users/users.repository';
 
@@ -12,8 +12,8 @@ import { findNewMessageOptOuts } from '../users/users.repository';
 const MAX_DEVICE_TOKENS_PER_USER = 10;
 
 /**
- * Mendaftarkan (atau memperbarui) token FCM milik user, lalu memangkas
- * token terlama bila melebihi batas maksimum per user.
+ * Mendaftarkan (atau memperbarui) subscription id OneSignal milik user, lalu
+ * memangkas subscription terlama bila melebihi batas maksimum per user.
  */
 export async function registerDevice(
   userId: string,
@@ -38,8 +38,10 @@ export interface PushTarget {
 /**
  * Mengirim push notification untuk pesan masuk ke seluruh kandidat penerima.
  * Penerima disaring: bukan pengirim sendiri, tidak memblokir (atau diblokir
- * oleh) pengirim, dan tidak sedang mute. Kegagalan push tidak boleh mengganggu
- * alur utama, sehingga ditangkap dan hanya dicatat sebagai error.
+ * oleh) pengirim, dan tidak sedang mute. Pengiriman memakai external id
+ * (user.id aplikasi) sehingga menyasar identity pengguna, bukan per-perangkat.
+ * Kegagalan push tidak boleh mengganggu alur utama, sehingga ditangkap dan
+ * hanya dicatat sebagai error.
  */
 export async function sendIncomingPush(options: {
   conversationId: string;
@@ -66,9 +68,6 @@ export async function sendIncomingPush(options: {
     );
     if (recipients.length === 0) return;
 
-    const tokens = await repository.findTokensByUserIds(recipients.map((r) => r.userId));
-    if (tokens.length === 0) return;
-
     // Judul push: untuk grup tampilkan "pengirim @ nama grup", untuk DM nama pengirim.
     const isGroup = options.conversationType === 'GROUP';
     const title = isGroup
@@ -76,7 +75,7 @@ export async function sendIncomingPush(options: {
       : options.senderName;
 
     await sendPush(
-      tokens.map((t) => t.token),
+      recipients.map((r) => r.userId),
       {
         title,
         body: messagePreview(options.content),
@@ -86,6 +85,9 @@ export async function sendIncomingPush(options: {
           type: isGroup ? 'group' : 'dm',
           senderId: options.senderId,
           senderName: options.senderName,
+          url: isGroup
+            ? `/chat/${options.conversationId}`
+            : `/dm/${options.conversationId}`,
         },
       },
     );
