@@ -39,6 +39,8 @@ const messageColumns = {
   isPinned: messages.isPinned,
   isEdited: messages.isEdited,
   isDeleted: messages.isDeleted,
+  isForwarded: messages.isForwarded,
+  forwardCount: messages.forwardCount,
   createdAt: messages.createdAt,
 };
 

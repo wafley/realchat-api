@@ -678,6 +678,8 @@ const messageColumns = {
   isEdited: messages.isEdited,
   isDeleted: messages.isDeleted,
   deletedBy: messages.deletedBy,
+  isForwarded: messages.isForwarded,
+  forwardCount: messages.forwardCount,
   editedAt: messages.editedAt,
   createdAt: messages.createdAt,
 };
@@ -1055,6 +1057,7 @@ export async function insertAttachmentMessageAtomically(
 /**
  * Salin pesan (termasuk metadata berkas; fileUrl dipakai ulang, bukan
  * dipindah) ke percakapan tujuan beserta status penerima, atomik.
+ * @param flags Hasil forward ditandai: isForwarded + forwardCount (jumlah kali diteruskan).
  */
 export async function forwardMessageAtomically(
   targetConversationId: string,
@@ -1069,11 +1072,19 @@ export async function forwardMessageAtomically(
     duration: number | null;
   },
   recipientStatuses: { userId: string; status: 'DELIVERED' | 'SENT' | 'SEEN'; seenAt?: Date }[],
+  flags?: { isForwarded: boolean; forwardCount: number },
 ) {
   return db.transaction(async (tx) => {
     const [message] = await tx
       .insert(messages)
-      .values({ conversationId: targetConversationId, senderId, content, type, ...file })
+      .values({
+        conversationId: targetConversationId,
+        senderId,
+        content,
+        type,
+        ...file,
+        ...flags,
+      })
       .returning();
 
     await tx

@@ -42,6 +42,10 @@ export const messages = pgTable(
     isDeleted: boolean('is_deleted').notNull().default(false),
     // Siapa yang menghapus pesan (admin grup untuk delete for-everyone).
     deletedBy: uuid('deleted_by').references(() => users.id),
+    // Menandai pesan yang merupakan hasil forward pesan lain.
+    isForwarded: boolean('is_forwarded').notNull().default(false),
+    // Berapa kali pesan telah diteruskan (ditambah setiap kali forward).
+    forwardCount: integer('forward_count').notNull().default(0),
     editedAt: timestamp('edited_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
