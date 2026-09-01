@@ -7,6 +7,7 @@ import * as repository from './devices.repository';
 import { sendPush, messagePreview } from './onesignal.service';
 import { getBlockRelationUserIds } from '../users/blockedUsers.repository';
 import { findNewMessageOptOuts } from '../users/users.repository';
+import { findTokensByUserIds } from './devices.repository';
 
 // Batas jumlah token per user; token terlama akan dipangkas saat registrasi baru.
 const MAX_DEVICE_TOKENS_PER_USER = 10;
@@ -68,6 +69,14 @@ export async function sendIncomingPush(options: {
     );
     if (recipients.length === 0) return;
 
+    // Hanya kirim ke user yang benar-benar punya subscription OneSignal (ada
+    // device token tersimpan); tanpa ini OneSignal membalas invalid_aliases
+    // untuk setiap recipient yang belum pernah subscribe.
+    const tokens = await findTokensByUserIds(recipients.map((r) => r.userId));
+    const subscribedIds = new Set(tokens.map((t) => t.userId));
+    const subscribed = recipients.filter((r) => subscribedIds.has(r.userId));
+    if (subscribed.length === 0) return;
+
     // Judul push: untuk grup pakai nama grup saja, untuk DM nama pengirim.
     const isGroup = options.conversationType === 'GROUP';
     const title = isGroup ? options.conversationName || 'Group' : options.senderName;
@@ -78,7 +87,7 @@ export async function sendIncomingPush(options: {
       : messagePreview(options.content);
 
     await sendPush(
-      recipients.map((r) => r.userId),
+      subscribed.map((r) => r.userId),
       {
         title,
         body,
