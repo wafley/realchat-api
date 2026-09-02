@@ -8,6 +8,7 @@ import { sendPush, messagePreview } from './onesignal.service';
 import { getBlockRelationUserIds } from '../users/blockedUsers.repository';
 import { findNewMessageOptOuts } from '../users/users.repository';
 import { findTokensByUserIds } from './devices.repository';
+import { findContact } from '../contacts/contacts.repository';
 
 // Batas jumlah token per user; token terlama akan dipangkas saat registrasi baru.
 const MAX_DEVICE_TOKENS_PER_USER = 10;
@@ -41,8 +42,11 @@ export interface PushTarget {
  * Penerima disaring: bukan pengirim sendiri, tidak memblokir (atau diblokir
  * oleh) pengirim, dan tidak sedang mute. Pengiriman memakai external id
  * (user.id aplikasi) sehingga menyasar identity pengguna, bukan per-perangkat.
- * Kegagalan push tidak boleh mengganggu alur utama, sehingga ditangkap dan
- * hanya dicatat sebagai error.
+ * Nama pengirim di-resolve per penerima dengan prioritas customName dari
+ * kontak penerima, lalu senderName (fullName || username); penerima dengan
+ * nama hasil yang sama dikirim dalam satu push agar judul/isi sesuai untuk
+ * masing-masing. Kegagalan push tidak boleh mengganggu alur utama, sehingga
+ * ditangkap dan hanya dicatat sebagai error.
  */
 export async function sendIncomingPush(options: {
   conversationId: string;
@@ -77,30 +81,44 @@ export async function sendIncomingPush(options: {
     const subscribed = recipients.filter((r) => subscribedIds.has(r.userId));
     if (subscribed.length === 0) return;
 
+    // Resolve nama pengirim untuk tiap penerima: customName dari kontak
+    // penerima (findContact) lebih diutamakan, lalu senderName yang dihitung
+    // pemanggil (fullName || username). Kelompokkan penerima per nama hasil
+    // resolve agar tiap push memakai nama yang tepat bagi penerimanya.
+    const byName = new Map<string, PushTarget[]>();
+    for (const receiver of subscribed) {
+      const contact = await findContact(receiver.userId, options.senderId);
+      const displayName = contact?.customName || options.senderName;
+      const group = byName.get(displayName) ?? [];
+      group.push(receiver);
+      byName.set(displayName, group);
+    }
+
     // Judul push: untuk grup pakai nama grup saja, untuk DM nama pengirim.
     const isGroup = options.conversationType === 'GROUP';
-    const title = isGroup ? options.conversationName || 'Group' : options.senderName;
+    const preview = messagePreview(options.content);
 
-    // Body push: untuk grup "pengirim: pesan", untuk DM hanya isi pesan.
-    const body = isGroup
-      ? `${options.senderName}: ${messagePreview(options.content)}`
-      : messagePreview(options.content);
+    for (const [senderName, group] of byName) {
+      const title = isGroup ? options.conversationName || 'Group' : senderName;
+      // Body push: untuk grup "pengirim: pesan", untuk DM hanya isi pesan.
+      const body = isGroup ? `${senderName}: ${preview}` : preview;
 
-    await sendPush(
-      subscribed.map((r) => r.userId),
-      {
-        title,
-        body,
-        data: {
-          conversationId: options.conversationId,
-          messageId: options.messageId,
-          type: isGroup ? 'group' : 'dm',
-          senderId: options.senderId,
-          senderName: options.senderName,
-          url: isGroup ? `/chat/${options.conversationId}` : `/dm/${options.conversationId}`,
+      await sendPush(
+        group.map((r) => r.userId),
+        {
+          title,
+          body,
+          data: {
+            conversationId: options.conversationId,
+            messageId: options.messageId,
+            type: isGroup ? 'group' : 'dm',
+            senderId: options.senderId,
+            senderName,
+            url: isGroup ? `/chat/${options.conversationId}` : `/dm/${options.conversationId}`,
+          },
         },
-      },
-    );
+      );
+    }
   } catch (err) {
     console.error('[push] sendIncomingPush failed:', err);
   }
