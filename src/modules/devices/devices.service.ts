@@ -1,19 +1,20 @@
 /**
- * Layanan logika bisnis perangkat: registrasi/penghapusan token FCM milik user
- * dan fan-out push notification untuk pesan masuk dengan menyaring penerima
+ * Layanan logika bisnis perangkat: registrasi/penghapusan subscription id milik
+ * user dan fan-out push notification untuk pesan masuk dengan menyaring penerima
  * yang memblokir pengirim, sedang mode mute, atau mematikan notifikasi pesan.
  */
 import * as repository from './devices.repository';
-import { sendPush, messagePreview } from './fcm.service';
+import { sendPush, messagePreview } from './onesignal.service';
 import { getBlockRelationUserIds } from '../users/blockedUsers.repository';
 import { findNewMessageOptOuts } from '../users/users.repository';
+import { findTokensByUserIds } from './devices.repository';
 
 // Batas jumlah token per user; token terlama akan dipangkas saat registrasi baru.
 const MAX_DEVICE_TOKENS_PER_USER = 10;
 
 /**
- * Mendaftarkan (atau memperbarui) token FCM milik user, lalu memangkas
- * token terlama bila melebihi batas maksimum per user.
+ * Mendaftarkan (atau memperbarui) subscription id OneSignal milik user, lalu
+ * memangkas subscription terlama bila melebihi batas maksimum per user.
  */
 export async function registerDevice(
   userId: string,
@@ -38,8 +39,10 @@ export interface PushTarget {
 /**
  * Mengirim push notification untuk pesan masuk ke seluruh kandidat penerima.
  * Penerima disaring: bukan pengirim sendiri, tidak memblokir (atau diblokir
- * oleh) pengirim, dan tidak sedang mute. Kegagalan push tidak boleh mengganggu
- * alur utama, sehingga ditangkap dan hanya dicatat sebagai error.
+ * oleh) pengirim, dan tidak sedang mute. Pengiriman memakai external id
+ * (user.id aplikasi) sehingga menyasar identity pengguna, bukan per-perangkat.
+ * Kegagalan push tidak boleh mengganggu alur utama, sehingga ditangkap dan
+ * hanya dicatat sebagai error.
  */
 export async function sendIncomingPush(options: {
   conversationId: string;
@@ -66,26 +69,35 @@ export async function sendIncomingPush(options: {
     );
     if (recipients.length === 0) return;
 
-    const tokens = await repository.findTokensByUserIds(recipients.map((r) => r.userId));
-    if (tokens.length === 0) return;
+    // Hanya kirim ke user yang benar-benar punya subscription OneSignal (ada
+    // device token tersimpan); tanpa ini OneSignal membalas invalid_aliases
+    // untuk setiap recipient yang belum pernah subscribe.
+    const tokens = await findTokensByUserIds(recipients.map((r) => r.userId));
+    const subscribedIds = new Set(tokens.map((t) => t.userId));
+    const subscribed = recipients.filter((r) => subscribedIds.has(r.userId));
+    if (subscribed.length === 0) return;
 
-    // Judul push: untuk grup tampilkan "pengirim @ nama grup", untuk DM nama pengirim.
+    // Judul push: untuk grup pakai nama grup saja, untuk DM nama pengirim.
     const isGroup = options.conversationType === 'GROUP';
-    const title = isGroup
-      ? `${options.senderName} @ ${options.conversationName || 'Group'}`
-      : options.senderName;
+    const title = isGroup ? options.conversationName || 'Group' : options.senderName;
+
+    // Body push: untuk grup "pengirim: pesan", untuk DM hanya isi pesan.
+    const body = isGroup
+      ? `${options.senderName}: ${messagePreview(options.content)}`
+      : messagePreview(options.content);
 
     await sendPush(
-      tokens.map((t) => t.token),
+      subscribed.map((r) => r.userId),
       {
         title,
-        body: messagePreview(options.content),
+        body,
         data: {
           conversationId: options.conversationId,
           messageId: options.messageId,
           type: isGroup ? 'group' : 'dm',
           senderId: options.senderId,
           senderName: options.senderName,
+          url: isGroup ? `/chat/${options.conversationId}` : `/dm/${options.conversationId}`,
         },
       },
     );
