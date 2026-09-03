@@ -183,8 +183,5 @@ export async function changePasswordAtomically(userId: string, passwordHash: str
  * menyetel sandi. Tidak mengubah tokenVersion atau menghapus refresh token.
  */
 export async function setPasswordHash(userId: string, passwordHash: string) {
-  await db
-    .update(users)
-    .set({ passwordHash, updatedAt: new Date() })
-    .where(eq(users.id, userId));
+  await db.update(users).set({ passwordHash, updatedAt: new Date() }).where(eq(users.id, userId));
 }

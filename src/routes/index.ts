@@ -23,11 +23,11 @@ const router = Router();
 router.use('/auth', authRoutes);
 router.use('/users', userRoutes);
 router.use('/conversations', conversationRoutes);
-  // starredRouter menangani rute pesan berbintang di /messages,
-  // reactedRouter menangani rute pesan yang direaksi di /messages,
-  // dmSearchRouter menangani pencarian DM di /dm (dipisah dari modul utamanya).
-  router.use('/messages', starredRouter);
-  router.use('/messages', reactedRouter);
+// starredRouter menangani rute pesan berbintang di /messages,
+// reactedRouter menangani rute pesan yang direaksi di /messages,
+// dmSearchRouter menangani pencarian DM di /dm (dipisah dari modul utamanya).
+router.use('/messages', starredRouter);
+router.use('/messages', reactedRouter);
 router.use('/groups', groupRoutes);
 router.use('/contacts', contactRoutes);
 router.use('/notifications', notificationRoutes);
