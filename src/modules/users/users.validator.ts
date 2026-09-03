@@ -44,6 +44,13 @@ export const changePasswordSchema = z
   })
   .strict();
 
+/** Skema set password: untuk pengguna OAuth yang belum punya password. */
+export const setPasswordSchema = z
+  .object({
+    password: z.string().min(6).max(128),
+  })
+  .strict();
+
 /** Nilai visibilitas privasi yang valid untuk kedua toggle pengaturan. */
 export const privacyVisibilitySchema = z.enum(['EVERYONE', 'CONTACTS', 'NOBODY']);
 

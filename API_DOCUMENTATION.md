@@ -10,6 +10,8 @@ http://{{BACKEND_IP}}:3000/api
 > Cek via `ipconfig` (Windows) atau `ifconfig` (Mac/Linux).
 > Server listen di `0.0.0.0` — bisa diakses device lain dalam satu jaringan.
 
+> **Base path:** semua endpoint di bawah `/api` (sesuai `app.ts` → prefix `/api`). Tabel endpoint di bawah menulis path relatif (mis. `/auth/login`) = `http://{{BACKEND_IP}}:3000/api/auth/login`. Seluruh endpoint kecuali Auth public & kegiatan verifikasi email dilindungi `verifyJWT` (header `Authorization: Bearer <accessToken>`).
+
 ---
 
 ## Auth — Token Based
@@ -85,16 +87,35 @@ Ulang request yang gagal
 | POST | `/auth/forgot-password` | `{ email }` | 200 — success |
 | POST | `/auth/reset-password` | `{ token, password }` | 200 — success |
 | POST | `/auth/verify-email` | `{ token }` | 200 — success |
+| GET | `/auth/google` | — | 302 — redirect ke Google consent (login/register OAuth) |
+| GET | `/auth/google/callback` | `?code=` (query) | 302 — redirect ke `FRONTEND_URL/auth/callback?token&refreshToken&user` atau `.../login?error=google_cancelled\|google_failed` |
+
+### Delete Account (Bearer required)
+
+| Method | Endpoint | Body | Response |
+|--------|----------|------|----------|
+| DELETE | `/auth/me` | `{ password }` | 200 — akun dihapus (anonimisasi + token di-cabut) |
 
 ### Users (Bearer required)
 
 | Method | Endpoint | Body/Params | Response |
 |--------|----------|-------------|----------|
-| GET | `/users/me` | — | 200 — profile |
+| GET | `/users/me` | — | 200 — profile (termasuk `provider`, `hasPassword` utk user OAuth) |
 | PUT | `/users/me` | `{ username?, fullName?, bio?, statusText? }` | 200 — updated profile |
 | GET | `/users/:id` | `:id` (uuid) | 200 — public profile |
 | PUT | `/users/me/avatar` | `avatar` (multipart file) | 200 — updated profile |
+| PUT | `/users/me/banner` | `banner` (multipart file) | 200 — updated profile (bannerUrl) |
 | PUT | `/users/me/password` | `{ oldPassword, newPassword }` | 200 — success |
+| PUT | `/users/me/set-password` | `{ password }` | 200 — success (untuk user OAuth yg belum punya password) |
+| GET | `/users/me/blocked` | — | 200 — `{ users }` daftar user yang diblokir |
+| GET | `/users/me/privacy` | — | 200 — `{ lastSeenVisibility, groupInvitePolicy }` |
+| PUT | `/users/me/privacy` | `{ lastSeenVisibility?, groupInvitePolicy? }` (`EVERYONE`/`CONTACTS`/`NOBODY`) | 200 — updated privacy |
+| GET | `/users/me/notification-preferences` | — | 200 — `{ notifyNewMessages, notifyGroupInvites }` |
+| PUT | `/users/me/notification-preferences` | `{ notifyNewMessages?, notifyGroupInvites? }` (bool) | 200 — updated preferences |
+| POST | `/users/:id/block` | `:id` (uuid) | 200 — user diblokir |
+| DELETE | `/users/:id/block` | `:id` (uuid) | 200 — unblock |
+
+> **Profiles (OAuth):** `GET /users/me` dan `GET /users/:id` menyertakan `provider` (`null` untuk user lokal) dan `hasPassword` (bool) — dipakai FE untuk menampilkan aksi "set password" bagi user yang daftar lewat Google.
 
 ### Conversations (Bearer required)
 
@@ -184,20 +205,31 @@ Ulang request yang gagal
 | GET | `/conversations/:id/messages` | `?cursor=&limit=50` | 200 — paginated messages |
 | GET | `/conversations/:id/pinned` | `?limit=50` | 200 — `{ messages }` daftar pesan terpin |
 | PUT | `/conversations/:id/messages/:messageId` | `{ content }` | 200 — edited message |
-| DELETE | `/conversations/:id/messages/:messageId` | — | 200 — deleted |
+| DELETE | `/conversations/:id/messages/:messageId` | — | 200 — deleted (pemilik pesan, atau admin grup untuk pesan member lain — delete for everyone) |
 | PUT | `/conversations/:id/messages/:messageId/pin` | — | 200 — `{ isPinned: true }` (broadcast `message:pin:updated`) |
 | DELETE | `/conversations/:id/messages/:messageId/pin` | — | 200 — `{ isPinned: false }` |
 | POST | `/conversations/:id/messages/:messageId/forward` | `{ targetConversationId }` | 201 — forwarded message (broadcast `message:new`) |
 | PUT | `/conversations/:id/messages/:messageId/star` | — | 200 — `{ starredAt }` star pesan (per-user, privat) |
 | DELETE | `/conversations/:id/messages/:messageId/star` | — | 200 — `{ starredAt: null }` |
+| PUT | `/conversations/:id/messages/:messageId/reactions` | `{ emoji }` (1-10 char) | 200 — `{ reactions }` tambah/update reaksi (1 emoji per user) |
+| DELETE | `/conversations/:id/messages/:messageId/reactions` | — | 200 — `{ reactions }` hapus reaksi sendiri |
+| GET | `/conversations/:id/messages/:messageId/reactions` | — | 200 — `{ reactions: [{ emoji, users: [...] }] }` |
+| GET | `/conversations/:id/messages/:messageId/readers` | — | 200 — `{ readers: [{ userId, ... , seenAt }] }` siapa yang telah membaca |
 | GET | `/messages/starred` | `?cursor=&limit=50` | 200 — `{ messages, nextCursor }` semua pesan ter-star milik user |
+| GET | `/messages/reacted` | `?cursor=&limit=50` | 200 — `{ messages, nextCursor }` pesan yg pernah direaksi user (lintas percakapan) |
 | POST | `/conversations/:id/read` | — | 200 — `{ updated, seenAt }` tandai semua pesan masuk SEEN |
 
-> **`GET /conversations/:id/messages`:** tiap message kini membawa `sender: { username, fullName, avatarUrl }` (join ke tabel `users`), selain `status` (`SENT`/`DELIVERED`/`SEEN`), `seenAt`, `isStarred`, `starredAt`. Event socket `message:new` (send, forward, SYSTEM) memakai shape yang sama.
+> **`GET /conversations/:id/messages`:** tiap message kini membawa `sender: { username, fullName, avatarUrl }` (join ke tabel `users`), selain `status` (`SENT`/`DELIVERED`/`SEEN`), `seenAt`, `isStarred`, `starredAt`, `reactions`, `isPinned`, `isEdited`, `isDeleted`, `deletedBy`, dan **`isForwarded` + `forwardCount`** (flag pesan hasil forward). Event socket `message:new` (send, forward, SYSTEM) memakai shape yang sama.
+>
+> **Forward — flag `isForwarded` / `forwardCount`:** setiap `POST .../forward` menghasilkan pesan baru dengan `isForwarded: true` dan `forwardCount = (forwardCount pesan asal ?? 0) + 1`. Pesan biasa (bukan forward) bernilai `isForwarded: false`, `forwardCount: 0`. Flag ikut di `GET /conversations/:id/messages`, `message:new`, dan hasil search.
 
 > **`GET /conversations/:id/pinned`:** diurutkan `pinnedAt` DESC — pesan yang paling baru di-pin tampil pertama. `pinnedAt` hanya bergeser saat pin/unpin, sehingga mengedit pesan terpin tidak mengubah urutan. Unpin menyetel `pinnedAt` ke `null`. Pesan tipe `SYSTEM` tidak dapat di-pin dan dikecualikan dari daftar.
 >
 > **Star — `message_stars` (per-user, privat):** tiap message pada `GET /conversations/:id/messages` kini membawa `isStarred` (bool) dan `starredAt`. `GET /messages/starred` menampilkan detil pesan + `sender` + `conversation`, diurutkan `starredAt` DESC. Pesan `SYSTEM` / `isDeleted` tidak dapat di-star baru, tapi star yang sudah ada **tidak otomatis dihapus** — pesan yang di-*soft delete* / di-*clear* **tetap muncul** di daftar starred (`isDeleted: true`, `content: ""` → FE render placeholder). Event socket `message:star:updated` (`{ messageId, isStarred, starredAt }`) **hanya dikirim ke room `user:<userId>`** (privasi star).
+>
+> **Reactions — REST & socket (`message_reactions`, 1 emoji per user per pesan):** `PUT/DELETE /conversations/:id/messages/:messageId/reactions` dan socket `message:reaction:add` / `message:reaction:remove` sama-sama menghasilkan state reaksi. Payload reaksi (`message:reaction:updated` / REST) berbentuk `reactions: [{ emoji, users: [{ userId, username, fullName, avatarUrl }] }]`. `GET /messages/reacted` menampilkan pesan yang pernah direaksi user (lintas percakapan).
+>
+> **Readers — `GET /conversations/:id/messages/:messageId/readers`:** daftar user yang telah membaca pesan beserta `seenAt` (bagian dari read receipt).
 
 ### Groups (Bearer required)
 
@@ -264,6 +296,8 @@ Ulang request yang gagal
 | GET | `/notifications/unread-count` | — | 200 — `{ count }` |
 | PUT | `/notifications/read-all` | — | 200 — success |
 | PUT | `/notifications/:id/read` | `:id` (uuid) | 200 — marked read |
+| DELETE | `/notifications/:id` | `:id` (uuid) | 200 — deleted satu notifikasi |
+| DELETE | `/notifications` | — | 200 — hapus semua notifikasi milik user |
 
 ### Devices — Push Token (Bearer required)
 
@@ -272,7 +306,7 @@ Ulang request yang gagal
 | POST | `/devices` | `{ token, platform: 'android' \| 'web' }` | 201 — registered (upsert; token+user sama → update, token dipakai user lain → pindah ownership) |
 | DELETE | `/devices` | `{ token }` | 200 — unregistered (panggil saat logout / token invalid) |
 
-> Token FCM per-user per-device; satu token hanya milik satu user pada satu waktu (ownership pindah saat token didaftarkan ulang oleh akun lain). Maksimal **10 token per user** — saat melebihi, token tertua otomatis dihapus (yang terbaru dipertahankan; aman untuk device-sharing). Ownership transfer adalah **accepted risk**: token FCM opak & hanya diketahui pemilik/backend, transfer dibutuhkan agar user baru bisa pakai device yang sama; jika token bocor, efek terburuk hanya push korban nonaktif (bukan kebocoran data). Pemakaian push notification: lihat bagian "Push Notification".
+> Token OneSignal (subscription id) per-user per-device; satu token hanya milik satu user pada satu waktu (ownership pindah saat token didaftarkan ulang oleh akun lain). Maksimal **10 token per user** — saat melebihi, token tertua otomatis dihapus (yang terbaru dipertahankan; aman untuk device-sharing). Ownership transfer adalah **accepted risk**: token opak & hanya diketahui pemilik/backend, transfer dibutuhkan agar user baru bisa pakai device yang sama; jika token bocor, efek terburuk hanya push korban nonaktif (bukan kebocoran data). Pemakaian push notification: lihat bagian "Push Notification".
 
 ---
 
@@ -285,23 +319,24 @@ Ulang request yang gagal
 | GET | `/search/messages` | `?q=&conversationId=&before=&after=&cursor=&limit=50` | 200 — `{ messages, nextCursor }` cari pesan (dalam satu conversation atau semua punya user) |
 | GET | `/dm/search` | `?q=&cursor=&limit=50` | 200 — `{ messages, nextCursor }` cari pesan di semua DM user → `[{ messageId, conversationId, conversationName, senderId, senderName, content, createdAt }]` |
 
-> **Pencarian** memakai `ILIKE` dengan escaping `\ % _`; `before`/`after` adalah filter timestamp ISO (`created_at`); hasil kosong = array kosong (bukan error).
+> **Pencarian** memakai `ILIKE` dengan escaping `\ % _`; `before`/`after` adalah filter timestamp ISO (`created_at`); hasil kosong = array kosong (bukan error). Setiap pesan hasil pencarian membawa shape lengkap termasuk `sender`, `isForwarded`, dan `forwardCount`.
 
 ---
 
-## Push Notification (FCM)
+## Push Notification (OneSignal)
 
 ### Ringkasan
-- FE mendaftarkan FCM token lewat `POST /devices` (lihat bagian Devices). Saat ada pesan masuk ke user yang **sedang offline**, BE mengirim push notification via Firebase Cloud Messaging. Push **tidak menunggu** — dikerjakan terpisah setelah ACK dikirim ke pengirim.
+- FE mendaftarkan OneSignal subscription id lewat `POST /devices` (lihat bagian Devices). Saat ada pesan masuk ke user yang **sedang offline**, BE mengirim push notification via **OneSignal REST API** (`include_aliases.external_id` → semua perangkat milik user). Push **tidak menunggu** — dikerjakan terpisah setelah ACK dikirim ke pengirim.
+- Jika kredensial OneSignal belum dikonfigurasi (`.env` kosong), push berjalan di **mode dry-run** (payload hanya di-log ber-prefix `[push:dry-run]`), tidak menggagalkan alur utama.
 
 ### Kebijakan
 - Push hanya dikirim ke **penerima yang tidak online** (tidak terhubung socket) pada saat pesan masuk.
 - Pesan ber-type `SYSTEM` tidak memicu push.
 - Member yang **mute** conversation tidak menerima push (tidak memicu apa pun).
 - Pengirim tidak menerima push untuk pesannya sendiri.
-- Satu token FCM hanya milik satu user (ownership pindah saat token didaftarkan ulang akun lain).
-- Token yang sudah tidak terdaftar di FCM (`registration-token-not-registered`) otomatis dihapus.
-- Di mode non-production push **dry-run** (tidak benar-benar dikirim ke FCM); log ber-prefix `[push:dry-run]`.
+- Satu token hanya milik satu user (ownership pindah saat token didaftarkan ulang akun lain).
+- Di mode non-production push **dry-run** (tidak benar-benar dikirim ke OneSignal); log ber-prefix `[push:dry-run]`.
+- Body notifikasi di-truncate jadi pratinjau maksimal 100 karakter.
 
 ### Payload push
 ```
@@ -340,7 +375,7 @@ const socket = io('http://{{BACKEND_IP}}:3000', {
 | `message:pin` | `{ messageId }` | Pin a message (broadcast ke room) |
 | `message:unpin` | `{ messageId }` | Unpin a message (broadcast ke room) |
 | `message:reaction:add` | `{ messageId, emoji }` | Add a reaction (toggle via add/remove) |
-| `message:reaction:remove` | `{ messageId, emoji }` | Remove own reaction |
+| `message:reaction:remove` | `{ messageId }` | Remove own reaction |
 | `message:star` | `{ messageId }` | Star a message (privat, hanya user) |
 | `message:unstar` | `{ messageId }` | Unstar a message (privat, hanya user) |
 | `typing:start` | `{ conversationId }` | User started typing |
@@ -348,16 +383,18 @@ const socket = io('http://{{BACKEND_IP}}:3000', {
 | `group:join` | `{ conversationId }` | Join a group room |
 | `group:leave` | `{ conversationId }` | Leave a group room |
 
+> **Ack/kallback:** semua event di atas memanggil callback (`(res) => ...`) dengan shape `{ data: <payload> }` saat sukses atau `{ error: <pesan> }` saat gagal (beberapa kegagalan validasi juga menyertakan `details`). Payload `data` sesuai event terkait.
+
 ### Server → Client
 
 | Event | Payload | Description |
 |-------|---------|-------------|
-| `message:new` | Row pesan penuh (id, conversationId, senderId, type, content, replyToId, isPinned, isEdited, isDeleted, editedAt, createdAt, updatedAt) **+ `sender: { username, fullName, avatarUrl }`** | Pesan baru di conversation (SYSTEM & forward memakai shape sama) |
+| `message:new` | Row pesan penuh (id, conversationId, senderId, type, content, replyToId, isPinned, isEdited, isDeleted, deletedBy, isForwarded, forwardCount, reactions, editedAt, createdAt, updatedAt) **+ `sender: { username, fullName, avatarUrl }`** | Pesan baru di conversation (SYSTEM & forward memakai shape sama) |
 | `message:status` | `{ messageId, status: 'DELIVERED' \| 'SEEN', userId, seenAt }` | Status delivery/read untuk pengirim |
-| `message:deleted` | `{ conversationId, messageId }` | Message deleted |
+| `message:deleted` | `{ conversationId, messageId, deletedBy }` | Message deleted |
 | `message:edited` | Row pesan penuh (termasuk `updatedAt`) | Message edited |
 | `message:pin:updated` | `{ conversationId, messageId, isPinned }` | Message pin/unpin state changed |
-| `message:reaction:updated` | `{ messageId, reactions: [{ emoji, userIds[] }] }` | Reaction state changed |
+| `message:reaction:updated` | `{ conversationId, messageId, reactions: [{ emoji, users: [{ userId, username, fullName, avatarUrl }] }] }` | Reaction state changed (1 emoji per user per message) |
 | `message:star:updated` | `{ messageId, isStarred, starredAt }` | Star state changed (**hanya ke room `user:<userId>`** — privat) |
 | `typing:start` | `{ conversationId, userId }` | User started typing |
 | `typing:stop` | `{ conversationId, userId }` | User stopped typing |
@@ -369,10 +406,12 @@ const socket = io('http://{{BACKEND_IP}}:3000', {
 | `group:member-added` | `{ conversationId, addedBy }` (ke member baru) atau `{ conversationId, newMembers, addedBy }` (ke member lama) | New members added |
 | `group:member-removed` | `{ conversationId, removedBy }` (ke yang dihapus/keluar) atau `{ conversationId, targetUserId, removedBy }` (ke member tersisa) | Member removed |
 | `group:member-role-changed` | `{ conversationId, targetUserId, newRole, changedBy }` | Member role changed (via `PUT .../role` **dan** promosi otomatis saat admin terakhir leave) |
+| `group:ownership-transferred` | `{ conversationId, newOwnerId, changedBy }` | Ownership grup dipindahtangankan (creator/owner lama = leave) |
 | `group:dismissed` | `{ conversationId }` | Grup di-dismiss permanen (ke tiap member) |
 | `contact:new` | `{ contact: { id, username, fullName, avatarUrl } }` | Someone added you as contact |
 | `contact:remove` | `{ userId }` | Someone removed you from their contacts |
 | `notification:new` | `{ notification }` | New notification |
+| `user:updated` | `{ id, username, fullName, bio, avatarUrl, bannerUrl, statusText }` | Profil user berubah (ke kontak & sesama anggota grup) |
 
 > `notification.type` yang ada: `new_contact`, `group_invite` (dibuat ke peserta saat grup dibuat atau member ditambahkan; body `@admin ...`), `mention` (di pesan grup saja, saat user disebut `@username`; berisi `actorId`, `conversationId`, `messageId`).
 

@@ -106,6 +106,8 @@ export async function getProfile(userId: string) {
     isOnline: user.isOnline,
     lastSeenAt: user.lastSeenAt,
     isVerified: user.isVerified,
+    provider: user.provider,
+    hasPassword: !!user.passwordHash,
     createdAt: user.createdAt,
   };
 }
@@ -284,12 +286,25 @@ export async function changePassword(userId: string, oldPassword: string, newPas
   const user = await findUserById(userId);
   if (!user) throw new NotFoundError('User not found');
 
+  if (!user.passwordHash) throw new BadRequestError('Current password is incorrect');
+
   const valid = await comparePassword(oldPassword, user.passwordHash);
   if (!valid) throw new BadRequestError('Current password is incorrect');
 
   const passwordHash = await hashPassword(newPassword);
   await repository.changePasswordAtomically(userId, passwordHash);
   getIO().in(`user:${userId}`).disconnectSockets(true);
+}
+
+export async function setPassword(userId: string, password: string) {
+  const user = await findUserById(userId);
+  if (!user) throw new NotFoundError('User not found');
+
+  if (user.passwordHash)
+    throw new BadRequestError('Password already set. Use change password instead.');
+
+  const passwordHash = await hashPassword(password);
+  await repository.setPasswordHash(userId, passwordHash);
 }
 
 /**

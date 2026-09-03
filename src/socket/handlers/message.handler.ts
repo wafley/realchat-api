@@ -19,16 +19,17 @@ import {
 } from '../../modules/conversations/conversations.validator';
 import {
   updateMessagePinned,
-  findReaction,
-  addReaction,
-  removeReaction,
-  findReactionsByMessage,
   addStar,
   removeStar,
   countMessageFileReferences,
   findMessageReadCompletion,
+  clearReactionsByMessage,
 } from '../../modules/conversations/conversations.repository';
 import { findUserById } from '../../modules/auth/auth.repository';
+import {
+  addReactionREST,
+  removeReactionREST,
+} from '../../modules/conversations/conversations.service';
 import {
   isBlockedByAnyMember,
   hasBlockedAnyMember,
@@ -36,6 +37,7 @@ import {
 import { notifyConversationMentions } from '../../modules/notifications/notifications.service';
 import { buildInitialReceipt } from '../../modules/conversations/conversations.service';
 import { toSender } from '../../utils/sender';
+import { AppError } from '../../utils/errors';
 import { sendIncomingPush } from '../../modules/devices/devices.service';
 import { env } from '../../config/env';
 import { unlinkQuietly } from '../../utils/cleanup';
@@ -67,7 +69,15 @@ const pinLimiter = createFixedWindowLimiter({
 });
 
 // Throttle penambahan reaksi per user+pesan.
-const reactionLimiter = createFixedWindowLimiter({
+const reactionAddLimiter = createFixedWindowLimiter({
+  windowMs: env.reactionThrottleMs,
+  max: 1,
+});
+
+// Throttle penghapusan reaksi per user+pesan. Dipisah dari penambahan agar
+// pola "bereaksi lalu membatalkan dengan cepat" tidak saling memblokir,
+// setara perilaku WhatsApp (reaksi cepat tidak hilang).
+const reactionRemoveLimiter = createFixedWindowLimiter({
   windowMs: env.reactionThrottleMs,
   max: 1,
 });
@@ -82,26 +92,12 @@ const starLimiter = createFixedWindowLimiter({
 const pruneInterval = setInterval(() => {
   seenLimiter.prune();
   pinLimiter.prune();
-  reactionLimiter.prune();
+  reactionAddLimiter.prune();
+  reactionRemoveLimiter.prune();
   starLimiter.prune();
 }, 60_000);
 // unref agar interval prune tidak menahan proses Node tetap hidup.
 pruneInterval.unref();
-
-/**
- * Mengelompokkan seluruh reaksi sebuah pesan berdasarkan emoji.
- * @returns Daftar `{ emoji, userIds }` siap dikirim ke client.
- */
-async function groupReactions(messageId: string) {
-  const rows = await findReactionsByMessage(messageId);
-  const byEmoji = new Map<string, string[]>();
-  for (const row of rows) {
-    const userIds = byEmoji.get(row.emoji) ?? [];
-    userIds.push(row.userId);
-    byEmoji.set(row.emoji, userIds);
-  }
-  return [...byEmoji.entries()].map(([emoji, userIds]) => ({ emoji, userIds }));
-}
 
 /**
  * Mendaftarkan seluruh listener event pesan untuk satu socket: message:send,
@@ -442,16 +438,12 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
           .select()
           .from(messages)
           .where(
-            and(
-              eq(messages.id, data.messageId),
-              eq(messages.senderId, userId),
-              eq(messages.conversationId, data.conversationId),
-            ),
+            and(eq(messages.id, data.messageId), eq(messages.conversationId, data.conversationId)),
           )
           .limit(1);
 
         if (!message) {
-          callback?.({ error: 'Message not found or unauthorized' });
+          callback?.({ error: 'Message not found' });
           return;
         }
         if (message.type === 'SYSTEM') {
@@ -475,11 +467,42 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
           return;
         }
 
+        // Pengguna boleh menghapus pesan miliknya sendiri; selain itu hanya
+        // admin grup yang boleh menghapus pesan member lain.
+        if (message.senderId !== userId) {
+          const [conv] = await db
+            .select({ type: conversations.type })
+            .from(conversations)
+            .where(eq(conversations.id, data.conversationId))
+            .limit(1);
+          if (conv?.type !== 'GROUP') {
+            callback?.({ error: 'You can only delete your own messages' });
+            return;
+          }
+          const [roleRow] = await db
+            .select({ role: conversationMembers.role })
+            .from(conversationMembers)
+            .where(
+              and(
+                eq(conversationMembers.conversationId, data.conversationId),
+                eq(conversationMembers.userId, userId),
+              ),
+            )
+            .limit(1);
+          if (roleRow?.role !== 'ADMIN') {
+            callback?.({ error: 'Only group admins can delete other members messages' });
+            return;
+          }
+        }
+
         // Hapus lembut: konten dikosongkan, baris pesan dipertahankan.
         await db
           .update(messages)
-          .set({ isDeleted: true, content: '' })
+          .set({ isDeleted: true, content: '', deletedBy: userId })
           .where(eq(messages.id, data.messageId));
+
+        // Bersihkan reaksi agar tidak muncul di daftar reaksi.
+        await clearReactionsByMessage(data.messageId);
 
         // File fisik hanya dihapus bila tidak lagi direferensikan pesan lain
         // (mis. pesan hasil forward yang berbagi fileUrl yang sama).
@@ -493,6 +516,7 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
         io.to(`conversation:${data.conversationId}`).emit('message:deleted', {
           messageId: data.messageId,
           conversationId: data.conversationId,
+          deletedBy: userId,
         });
 
         callback?.({ data: { messageId: data.messageId } });
@@ -687,21 +711,11 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
     void handleStar(data, false, callback);
   });
 
-  // Kelompokkan ulang reaksi pesan lalu siarkan ke seluruh room percakapan.
-  const emitReactions = (conversationId: string, messageId: string) =>
-    groupReactions(messageId).then((reactions) => {
-      io.to(`conversation:${conversationId}`).emit('message:reaction:updated', {
-        messageId,
-        reactions,
-      });
-      return reactions;
-    });
-
   socket.on(
     'message:reaction:add',
     async (data: { messageId: string; emoji: string }, callback?: (response: unknown) => void) => {
       try {
-        if (!reactionLimiter.allow(`${userId}:${data.messageId}`)) {
+        if (!reactionAddLimiter.allow(`${userId}:${data.messageId}`)) {
           callback?.({ error: 'Rate limit exceeded. Please slow down.' });
           return;
         }
@@ -713,6 +727,7 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
         }
         const { messageId, emoji } = parsed.data;
 
+        // Cari conversationId pesan untuk validasi service.
         const [message] = await db
           .select({ conversationId: messages.conversationId })
           .from(messages)
@@ -724,46 +739,30 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
           return;
         }
 
-        const [membership] = await db
-          .select({ id: conversationMembers.id })
-          .from(conversationMembers)
-          .where(
-            and(
-              eq(conversationMembers.conversationId, message.conversationId),
-              eq(conversationMembers.userId, userId),
-            ),
-          )
-          .limit(1);
-
-        if (!membership) {
-          callback?.({ error: 'Not a member of this conversation' });
-          return;
-        }
-
-        if (await findReaction(messageId, userId, emoji)) {
-          callback?.({ error: 'Reaction already exists' });
-          return;
-        }
-
-        await addReaction(messageId, userId, emoji);
-        const reactions = await emitReactions(message.conversationId, messageId);
-        callback?.({ data: { reactions } });
-      } catch {
-        callback?.({ error: 'Failed to add reaction' });
+        const result = await addReactionREST(userId, message.conversationId, messageId, emoji);
+        callback?.({ data: result });
+      } catch (error) {
+        const msg = error instanceof AppError ? error.message : 'Failed to add reaction';
+        callback?.({ error: msg });
       }
     },
   );
 
   socket.on(
     'message:reaction:remove',
-    async (data: { messageId: string; emoji: string }, callback?: (response: unknown) => void) => {
+    async (data: { messageId: string }, callback?: (response: unknown) => void) => {
       try {
-        const parsed = reactionSchema.safeParse(data);
+        if (!reactionRemoveLimiter.allow(`${userId}:${data.messageId}`)) {
+          callback?.({ error: 'Rate limit exceeded. Please slow down.' });
+          return;
+        }
+
+        const parsed = reactionSchema.omit({ emoji: true }).safeParse(data);
         if (!parsed.success) {
           callback?.({ error: 'Invalid message:reaction:remove payload' });
           return;
         }
-        const { messageId, emoji } = parsed.data;
+        const { messageId } = parsed.data;
 
         const [message] = await db
           .select({ conversationId: messages.conversationId })
@@ -776,27 +775,11 @@ export function setupMessageHandlers(io: Server, socket: Socket) {
           return;
         }
 
-        const [membership] = await db
-          .select({ id: conversationMembers.id })
-          .from(conversationMembers)
-          .where(
-            and(
-              eq(conversationMembers.conversationId, message.conversationId),
-              eq(conversationMembers.userId, userId),
-            ),
-          )
-          .limit(1);
-
-        if (!membership) {
-          callback?.({ error: 'Not a member of this conversation' });
-          return;
-        }
-
-        await removeReaction(messageId, userId, emoji);
-        const reactions = await emitReactions(message.conversationId, messageId);
-        callback?.({ data: { reactions } });
-      } catch {
-        callback?.({ error: 'Failed to remove reaction' });
+        const result = await removeReactionREST(userId, message.conversationId, messageId);
+        callback?.({ data: result });
+      } catch (error) {
+        const msg = error instanceof AppError ? error.message : 'Failed to remove reaction';
+        callback?.({ error: msg });
       }
     },
   );

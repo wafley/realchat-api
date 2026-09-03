@@ -31,8 +31,12 @@ const envSchema = z
     SMTP_PORT: z.coerce.number().default(587),
     SMTP_USER: z.string().default(''),
     SMTP_PASS: z.string().default(''),
-    FIREBASE_SERVICE_ACCOUNT: z.string().optional(),
+    ONESIGNAL_APP_ID: z.string().min(1).optional(),
+    ONESIGNAL_REST_API_KEY: z.string().min(1).optional(),
     PUSH_DRY_RUN_DELAY_MS: z.coerce.number().int().min(0).default(0),
+    GOOGLE_CLIENT_ID: z.string().min(1),
+    GOOGLE_CLIENT_SECRET: z.string().min(1),
+    GOOGLE_REDIRECT_URI: z.string().url().default('http://localhost:3000/api/auth/google/callback'),
   })
   .superRefine((data, ctx) => {
     if (data.NODE_ENV === 'production' && (!data.SMTP_USER || !data.SMTP_PASS)) {
@@ -83,6 +87,10 @@ export const env = {
   smtpPort: parsed.data.SMTP_PORT,
   smtpUser: parsed.data.SMTP_USER,
   smtpPass: parsed.data.SMTP_PASS,
-  firebaseServiceAccount: parsed.data.FIREBASE_SERVICE_ACCOUNT,
+  oneSignalAppId: parsed.data.ONESIGNAL_APP_ID,
+  oneSignalRestApiKey: parsed.data.ONESIGNAL_REST_API_KEY,
   pushDryRunDelayMs: parsed.data.PUSH_DRY_RUN_DELAY_MS,
+  googleClientId: parsed.data.GOOGLE_CLIENT_ID,
+  googleClientSecret: parsed.data.GOOGLE_CLIENT_SECRET,
+  googleRedirectUri: parsed.data.GOOGLE_REDIRECT_URI,
 };

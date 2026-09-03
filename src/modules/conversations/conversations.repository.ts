@@ -361,6 +361,31 @@ export async function isMember(conversationId: string, userId: string) {
   return !!result;
 }
 
+/** Jenis percakapan ('PRIVATE' | 'GROUP'); null bila tidak ditemukan. */
+export async function findConversationType(conversationId: string) {
+  const [result] = await db
+    .select({ type: conversations.type })
+    .from(conversations)
+    .where(eq(conversations.id, conversationId))
+    .limit(1);
+  return result || null;
+}
+
+/** Peran anggota pada sebuah percakapan; null bila bukan anggota. */
+export async function findMemberRole(conversationId: string, userId: string) {
+  const [result] = await db
+    .select({ role: conversationMembers.role })
+    .from(conversationMembers)
+    .where(
+      and(
+        eq(conversationMembers.conversationId, conversationId),
+        eq(conversationMembers.userId, userId),
+      ),
+    )
+    .limit(1);
+  return result || null;
+}
+
 /** Baris keanggotaan pengguna (kolom clearedAt untuk filter riwayat). */
 export async function findMembershipByUser(conversationId: string, userId: string) {
   const [result] = await db
@@ -652,6 +677,9 @@ const messageColumns = {
   pinnedAt: messages.pinnedAt,
   isEdited: messages.isEdited,
   isDeleted: messages.isDeleted,
+  deletedBy: messages.deletedBy,
+  isForwarded: messages.isForwarded,
+  forwardCount: messages.forwardCount,
   editedAt: messages.editedAt,
   createdAt: messages.createdAt,
 };
@@ -894,10 +922,15 @@ export async function updateMessageContent(id: string, content: string) {
 }
 
 /** Hapus lunak: isDeleted=true dan isi pesan dikosongkan. */
-export async function softDeleteMessage(id: string) {
+export async function softDeleteMessage(id: string, deletedBy?: string) {
   const [message] = await db
     .update(messages)
-    .set({ isDeleted: true, content: '', updatedAt: new Date() })
+    .set({
+      isDeleted: true,
+      content: '',
+      deletedBy: deletedBy ?? null,
+      updatedAt: new Date(),
+    })
     .where(eq(messages.id, id))
     .returning(messageColumns);
   return message || null;
@@ -1024,6 +1057,7 @@ export async function insertAttachmentMessageAtomically(
 /**
  * Salin pesan (termasuk metadata berkas; fileUrl dipakai ulang, bukan
  * dipindah) ke percakapan tujuan beserta status penerima, atomik.
+ * @param flags Hasil forward ditandai: isForwarded + forwardCount (jumlah kali diteruskan).
  */
 export async function forwardMessageAtomically(
   targetConversationId: string,
@@ -1038,11 +1072,19 @@ export async function forwardMessageAtomically(
     duration: number | null;
   },
   recipientStatuses: { userId: string; status: 'DELIVERED' | 'SENT' | 'SEEN'; seenAt?: Date }[],
+  flags?: { isForwarded: boolean; forwardCount: number },
 ) {
   return db.transaction(async (tx) => {
     const [message] = await tx
       .insert(messages)
-      .values({ conversationId: targetConversationId, senderId, content, type, ...file })
+      .values({
+        conversationId: targetConversationId,
+        senderId,
+        content,
+        type,
+        ...file,
+        ...flags,
+      })
       .returning();
 
     await tx
@@ -1279,46 +1321,121 @@ export async function findStar(messageId: string, userId: string) {
 }
 
 /** Cari reaksi emoji tertentu dari pengguna pada sebuah pesan. */
-export async function findReaction(messageId: string, userId: string, emoji: string) {
+/** Cek apakah pengguna sudah bereaksi pada pesan. */
+export async function findReaction(messageId: string, userId: string) {
   const [row] = await db
-    .select({ id: messageReactions.id })
+    .select({ id: messageReactions.id, emoji: messageReactions.emoji })
     .from(messageReactions)
-    .where(
-      and(
-        eq(messageReactions.messageId, messageId),
-        eq(messageReactions.userId, userId),
-        eq(messageReactions.emoji, emoji),
-      ),
-    )
+    .where(and(eq(messageReactions.messageId, messageId), eq(messageReactions.userId, userId)))
     .limit(1);
   return row || null;
 }
 
-/** Tambahkan reaksi emoji dari pengguna pada pesan. */
+/** Upsert reaksi: jika sudah ada, ganti emoji (1 emoji per user per pesan). */
 export async function addReaction(messageId: string, userId: string, emoji: string) {
-  await db.insert(messageReactions).values({ messageId, userId, emoji });
+  await db
+    .insert(messageReactions)
+    .values({ messageId, userId, emoji })
+    .onConflictDoUpdate({
+      target: [messageReactions.messageId, messageReactions.userId],
+      set: { emoji },
+    });
 }
 
-/** Hapus reaksi emoji tertentu dari pengguna pada pesan. */
-export async function removeReaction(messageId: string, userId: string, emoji: string) {
+/** Hapus reaksi pengguna pada pesan. */
+export async function removeReaction(messageId: string, userId: string) {
   await db
     .delete(messageReactions)
-    .where(
-      and(
-        eq(messageReactions.messageId, messageId),
-        eq(messageReactions.userId, userId),
-        eq(messageReactions.emoji, emoji),
-      ),
-    );
+    .where(and(eq(messageReactions.messageId, messageId), eq(messageReactions.userId, userId)));
 }
 
-/** Semua reaksi (emoji + userId) untuk sebuah pesan. */
+/** Hapus semua reaksi pada pesan tertentu (dipanggil saat soft-delete). */
+export async function clearReactionsByMessage(messageId: string) {
+  await db.delete(messageReactions).where(eq(messageReactions.messageId, messageId));
+}
+
+/** Semua reaksi untuk sebuah pesan beserta info pengguna. */
 export async function findReactionsByMessage(messageId: string) {
   return db
     .select({
       emoji: messageReactions.emoji,
       userId: messageReactions.userId,
+      username: users.username,
+      fullName: users.fullName,
+      avatarUrl: users.avatarUrl,
     })
     .from(messageReactions)
+    .innerJoin(users, eq(messageReactions.userId, users.id))
     .where(eq(messageReactions.messageId, messageId));
+}
+
+/** Batch reaksi untuk banyak pesan sekaligus (hemat round-trip). */
+export async function findReactionsByMessages(messageIds: string[]) {
+  if (messageIds.length === 0) return [];
+  return db
+    .select({
+      messageId: messageReactions.messageId,
+      emoji: messageReactions.emoji,
+      userId: messageReactions.userId,
+      username: users.username,
+      fullName: users.fullName,
+      avatarUrl: users.avatarUrl,
+    })
+    .from(messageReactions)
+    .innerJoin(users, eq(messageReactions.userId, users.id))
+    .where(inArray(messageReactions.messageId, messageIds));
+}
+
+/** Daftar pesan yang direaksi pengguna, lintas percakapan. */
+export async function findReactedMessages(
+  userId: string,
+  cursor?: { sortKey: string; id: string },
+  limit = 50,
+) {
+  const reactions = db
+    .select({
+      messageId: messageReactions.messageId,
+      reactedAt: messageReactions.createdAt,
+    })
+    .from(messageReactions)
+    .where(eq(messageReactions.userId, userId))
+    .as('user_reactions');
+
+  const senderUser = aliasedTable(users, 'reacted_sender');
+
+  const conditions: SQL[] = [];
+  if (cursor)
+    conditions.push(
+      sql`(${reactions.reactedAt}, ${reactions.messageId}) < (${cursor.sortKey}::timestamptz, ${cursor.id}::uuid)`,
+    );
+
+  return db
+    .select({
+      id: messages.id,
+      conversationId: messages.conversationId,
+      senderId: messages.senderId,
+      type: messages.type,
+      content: messages.content,
+      replyToId: messages.replyToId,
+      isPinned: messages.isPinned,
+      pinnedAt: messages.pinnedAt,
+      isEdited: messages.isEdited,
+      isDeleted: messages.isDeleted,
+      editedAt: messages.editedAt,
+      createdAt: messages.createdAt,
+      reactedAt: reactions.reactedAt,
+      senderUsername: senderUser.username,
+      senderFullName: senderUser.fullName,
+      senderAvatarUrl: senderUser.avatarUrl,
+      conversationType: conversations.type,
+      conversationName: conversations.name,
+      conversationAvatarUrl: conversations.avatarUrl,
+    })
+    .from(reactions)
+    .innerJoin(messages, eq(messages.id, reactions.messageId))
+    .innerJoin(senderUser, eq(senderUser.id, messages.senderId))
+    .innerJoin(conversations, eq(conversations.id, messages.conversationId))
+    .where(and(...conditions))
+    .orderBy(desc(reactions.reactedAt), desc(reactions.messageId))
+    .limit(limit + 1);
 }

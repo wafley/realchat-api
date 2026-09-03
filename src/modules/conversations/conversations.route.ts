@@ -51,6 +51,14 @@ router.post(
 );
 router.put('/:id/messages/:messageId/star', verifyJWT, controller.starMessage);
 router.delete('/:id/messages/:messageId/star', verifyJWT, controller.unstarMessage);
+router.put(
+  '/:id/messages/:messageId/reactions',
+  verifyJWT,
+  validate(validator.addReactionBodySchema),
+  controller.addReactionREST,
+);
+router.delete('/:id/messages/:messageId/reactions', verifyJWT, controller.removeReactionREST);
+router.get('/:id/messages/:messageId/reactions', verifyJWT, controller.getMessageReactions);
 router.post('/:id/read', verifyJWT, controller.markConversationRead);
 router.put('/:id/mute', verifyJWT, validate(validator.muteSchema), controller.muteConversation);
 router.delete('/:id/mute', verifyJWT, controller.unmuteConversation);
@@ -64,5 +72,10 @@ const starredRouter = Router();
 
 starredRouter.get('/starred', verifyJWT, controller.getStarredMessages);
 
+// Router terpisah untuk daftar pesan yang direaksi lintas percakapan.
+const reactedRouter = Router();
+
+reactedRouter.get('/reacted', verifyJWT, controller.getReactedMessages);
+
 export default router;
-export { starredRouter };
+export { starredRouter, reactedRouter };

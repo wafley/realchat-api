@@ -457,6 +457,49 @@ export async function getMessages(
   const hasMore = rawMessages.length > limit;
   const messagesList = hasMore ? rawMessages.slice(0, limit) : rawMessages;
 
+  // Batch fetch reaksi untuk semua pesan di halaman ini.
+  const messageIds = messagesList.map((m) => m.id);
+  const reactionRows = await repository.findReactionsByMessages(messageIds);
+
+  // Group by messageId → by emoji → { emoji, users[] }
+  const reactionsByMessage = new Map<
+    string,
+    Array<{
+      emoji: string;
+      users: Array<{
+        userId: string;
+        username: string;
+        fullName: string | null;
+        avatarUrl: string | null;
+      }>;
+    }>
+  >();
+  for (const row of reactionRows) {
+    const grouped = reactionsByMessage.get(row.messageId) ?? [];
+    const existing = grouped.find((e) => e.emoji === row.emoji);
+    if (existing) {
+      existing.users.push({
+        userId: row.userId,
+        username: row.username,
+        fullName: row.fullName,
+        avatarUrl: row.avatarUrl,
+      });
+    } else {
+      grouped.push({
+        emoji: row.emoji,
+        users: [
+          {
+            userId: row.userId,
+            username: row.username,
+            fullName: row.fullName,
+            avatarUrl: row.avatarUrl,
+          },
+        ],
+      });
+    }
+    reactionsByMessage.set(row.messageId, grouped);
+  }
+
   const messages = messagesList.map(
     ({
       minRank,
@@ -480,6 +523,7 @@ export async function getMessages(
             : 'DELIVERED',
       seenAt: seenAt ? seenAt.toISOString() : null,
       starredAt: starredAt ? starredAt.toISOString() : null,
+      reactions: reactionsByMessage.get(message.id) ?? [],
       sender: {
         username: senderUsername,
         fullName: senderFullName,
@@ -551,15 +595,14 @@ export async function editMessage(
 }
 
 /**
- * Hapus lunak pesan milik sendiri dan siarkan event message:deleted.
+ * Hapus lunak pesan (milik sendiri, atau pesan member lain oleh admin grup —
+ * delete for everyone) dan siarkan event message:deleted.
  * Berkas lampiran dihapus fisik hanya bila tidak ada pesan lain
  * (mis. hasil forward) yang masih mereferensikan fileUrl yang sama.
  */
 export async function deleteMessage(userId: string, conversationId: string, messageId: string) {
   const message = await repository.findMessageById(messageId);
   if (!message) throw new NotFoundError('Message not found');
-  if (message.senderId !== userId)
-    throw new ForbiddenError('You can only delete your own messages');
   if (message.conversationId !== conversationId)
     throw new ForbiddenError('Message does not belong to this conversation');
   if (message.type === 'SYSTEM') throw new BadRequestError('Cannot delete a system message');
@@ -567,7 +610,21 @@ export async function deleteMessage(userId: string, conversationId: string, mess
   const member = await repository.isMember(conversationId, userId);
   if (!member) throw new ForbiddenError('You are not a member of this conversation');
 
-  await repository.softDeleteMessage(messageId);
+  // Pengguna boleh menghapus pesan miliknya sendiri; selain itu hanya admin
+  // grup yang boleh menghapus pesan member lain (delete for everyone).
+  const isOwner = message.senderId === userId;
+  if (!isOwner) {
+    const conv = await repository.findConversationType(conversationId);
+    if (conv?.type !== 'GROUP') throw new ForbiddenError('You can only delete your own messages');
+    const role = await repository.findMemberRole(conversationId, userId);
+    if (role?.role !== 'ADMIN')
+      throw new ForbiddenError('Only group admins can delete other members messages');
+  }
+
+  await repository.softDeleteMessage(messageId, userId);
+
+  // Bersihkan reaksi agar tidak muncul di daftar reaksi.
+  await repository.clearReactionsByMessage(messageId);
 
   // Reference-aware unlink: hitung dulu referensi fileUrl lain.
   if (message.fileUrl && (await repository.countMessageFileReferences(message.fileUrl)) === 0) {
@@ -579,7 +636,7 @@ export async function deleteMessage(userId: string, conversationId: string, mess
 
   getIO()
     .to(`conversation:${conversationId}`)
-    .emit('message:deleted', { conversationId, messageId });
+    .emit('message:deleted', { conversationId, messageId, deletedBy: userId });
 }
 
 /**
@@ -733,6 +790,10 @@ export async function forwardMessage(
       };
     });
 
+  // Hasil forward ditandai: hitung jumlah forward dari pesan asal + 1.
+  const isForwarded = true;
+  const forwardCount = (message.forwardCount ?? 0) + 1;
+
   // Pesan salinan + status penerima dibuat dalam satu transaksi.
   const created = await repository.forwardMessageAtomically(
     targetConversationId,
@@ -747,6 +808,7 @@ export async function forwardMessage(
       duration: message.duration,
     },
     recipientRows,
+    { isForwarded, forwardCount },
   );
 
   // Tidak ada emit message:status awal; rekap status awal dilekatkan ke
@@ -950,4 +1012,161 @@ export async function unmuteConversation(userId: string, conversationId: string)
 
   await repository.setMutedUntil(conversationId, userId, null);
   return { mutedUntil: null };
+}
+
+/**
+ * Mengelompokkan reaksi berdasarkan emoji beserta info pengguna.
+ * @returns Daftar `{ emoji, users[] }` siap dikirim ke client.
+ */
+function groupReactionsFromRows(
+  rows: Array<{
+    emoji: string;
+    userId: string;
+    username: string;
+    fullName: string | null;
+    avatarUrl: string | null;
+  }>,
+) {
+  const byEmoji = new Map<
+    string,
+    Array<{ userId: string; username: string; fullName: string | null; avatarUrl: string | null }>
+  >();
+  for (const row of rows) {
+    const users = byEmoji.get(row.emoji) ?? [];
+    users.push({
+      userId: row.userId,
+      username: row.username,
+      fullName: row.fullName,
+      avatarUrl: row.avatarUrl,
+    });
+    byEmoji.set(row.emoji, users);
+  }
+  return [...byEmoji.entries()].map(([emoji, users]) => ({ emoji, users }));
+}
+
+/** Tambahkan/reaction pesan via REST (upsert: replace jika sudah ada). */
+export async function addReactionREST(
+  userId: string,
+  conversationId: string,
+  messageId: string,
+  emoji: string,
+) {
+  const message = await repository.findMessageById(messageId);
+  if (!message) throw new NotFoundError('Message not found');
+  if (message.conversationId !== conversationId)
+    throw new ForbiddenError('Message does not belong to this conversation');
+
+  const member = await repository.isMember(conversationId, userId);
+  if (!member) throw new ForbiddenError('You are not a member of this conversation');
+
+  if (message.isDeleted) throw new BadRequestError('Cannot react to a deleted message');
+  if (message.type === 'SYSTEM') throw new BadRequestError('Cannot react to a system message');
+
+  // Upsert: jika sudah ada reaksi, ganti emoji (1 per user per pesan).
+  await repository.addReaction(messageId, userId, emoji);
+  const rows = await repository.findReactionsByMessage(messageId);
+  const reactions = groupReactionsFromRows(rows);
+
+  getIO().to(`conversation:${conversationId}`).emit('message:reaction:updated', {
+    conversationId,
+    messageId,
+    reactions,
+  });
+
+  return { reactions };
+}
+
+/** Hapus reaksi pesan via REST; emit ke seluruh anggota conversation. */
+export async function removeReactionREST(
+  userId: string,
+  conversationId: string,
+  messageId: string,
+) {
+  const message = await repository.findMessageById(messageId);
+  if (!message) throw new NotFoundError('Message not found');
+  if (message.conversationId !== conversationId)
+    throw new ForbiddenError('Message does not belong to this conversation');
+
+  const member = await repository.isMember(conversationId, userId);
+  if (!member) throw new ForbiddenError('You are not a member of this conversation');
+
+  // Hanya izinkan hapus reaction jika pesan bukan deleted/system.
+  if (message.isDeleted) throw new BadRequestError('Cannot modify reaction on a deleted message');
+  if (message.type === 'SYSTEM')
+    throw new BadRequestError('Cannot modify reaction on a system message');
+
+  await repository.removeReaction(messageId, userId);
+  const rows = await repository.findReactionsByMessage(messageId);
+  const reactions = groupReactionsFromRows(rows);
+
+  getIO().to(`conversation:${conversationId}`).emit('message:reaction:updated', {
+    conversationId,
+    messageId,
+    reactions,
+  });
+
+  return { reactions };
+}
+
+/** Ambil seluruh reaksi untuk satu pesan (modal detail reaction). */
+export async function getMessageReactions(
+  userId: string,
+  conversationId: string,
+  messageId: string,
+) {
+  const message = await repository.findMessageById(messageId);
+  if (!message) throw new NotFoundError('Message not found');
+  if (message.conversationId !== conversationId)
+    throw new ForbiddenError('Message does not belong to this conversation');
+
+  const member = await repository.isMember(conversationId, userId);
+  if (!member) throw new ForbiddenError('You are not a member of this conversation');
+
+  const rows = await repository.findReactionsByMessage(messageId);
+  return { reactions: groupReactionsFromRows(rows) };
+}
+
+/**
+ * Daftar pesan yang direaksi pengguna lintas percakapan dengan
+ * paginasi keyset berbasis (reactedAt, id).
+ */
+export async function getReactedMessages(userId: string, cursor?: string, limit = 50) {
+  const decodedCursor = cursor ? decodeCompositeCursor(cursor) : undefined;
+  const rows = await repository.findReactedMessages(userId, decodedCursor, limit);
+  const hasMore = rows.length > limit;
+  const page = hasMore ? rows.slice(0, limit) : rows;
+
+  const messages = page.map((row) => ({
+    id: row.id,
+    conversationId: row.conversationId,
+    senderId: row.senderId,
+    type: row.type,
+    content: row.content,
+    replyToId: row.replyToId,
+    isPinned: row.isPinned,
+    pinnedAt: row.pinnedAt,
+    isEdited: row.isEdited,
+    isDeleted: row.isDeleted,
+    editedAt: row.editedAt,
+    createdAt: row.createdAt,
+    reactedAt: row.reactedAt.toISOString(),
+    sender: {
+      username: row.senderUsername,
+      fullName: row.senderFullName,
+      avatarUrl: row.senderAvatarUrl,
+    },
+    conversation: {
+      id: row.conversationId,
+      type: row.conversationType,
+      name: row.conversationName,
+      avatarUrl: row.conversationAvatarUrl,
+    },
+  }));
+
+  return {
+    messages,
+    nextCursor: hasMore
+      ? encodeCompositeCursor(page[page.length - 1].reactedAt, page[page.length - 1].id)
+      : null,
+  };
 }
