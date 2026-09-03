@@ -300,7 +300,8 @@ export async function setPassword(userId: string, password: string) {
   const user = await findUserById(userId);
   if (!user) throw new NotFoundError('User not found');
 
-  if (user.passwordHash) throw new BadRequestError('Password already set. Use change password instead.');
+  if (user.passwordHash)
+    throw new BadRequestError('Password already set. Use change password instead.');
 
   const passwordHash = await hashPassword(password);
   await repository.setPasswordHash(userId, passwordHash);

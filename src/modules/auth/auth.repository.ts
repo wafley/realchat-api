@@ -65,7 +65,9 @@ export async function findUserByProviderId(provider: string, providerId: string)
   const [user] = await db
     .select()
     .from(users)
-    .where(and(eq(users.provider, provider), eq(users.providerId, providerId), isNull(users.deletedAt)));
+    .where(
+      and(eq(users.provider, provider), eq(users.providerId, providerId), isNull(users.deletedAt)),
+    );
   return user || null;
 }
 

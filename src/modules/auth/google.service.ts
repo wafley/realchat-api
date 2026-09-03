@@ -1,5 +1,5 @@
 import { OAuth2Client } from 'google-auth-library';
-import crypto, { randomUUID } from 'crypto';
+import { randomUUID } from 'crypto';
 import { env } from '../../config/env';
 import * as repository from './auth.repository';
 import { generateAccessToken, generateRefreshToken } from '../../utils/generateToken';
@@ -42,7 +42,10 @@ export async function handleGoogleCallback(code: string) {
     if (existingByEmail) {
       user = existingByEmail;
     } else {
-      const baseUsername = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '');
+      const baseUsername = email
+        .split('@')[0]
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '');
       let username = baseUsername;
       let counter = 1;
       while (await repository.findUserByUsername(username)) {

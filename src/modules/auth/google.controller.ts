@@ -9,7 +9,7 @@ export function googleAuth(_req: Request, res: Response) {
 }
 
 /** Handle Google OAuth callback, issue tokens, redirect back to FE. */
-export async function googleCallback(req: Request, res: Response, next: NextFunction) {
+export async function googleCallback(req: Request, res: Response, _next: NextFunction) {
   try {
     const code = req.query.code as string;
     if (!code) {
